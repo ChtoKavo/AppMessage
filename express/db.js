@@ -1,21 +1,15 @@
 const mysql = require('mysql2');
 
-const connection = mysql.createConnection ({
-    host: 'localhost',
-    user: 'root',
-    password: 'root',
-    database: 'AppMessage',
-    port: 3306
+const pool = mysql.createPool({
+  host: process.env.DB_HOST || 'localhost',
+  user: process.env.DB_USER || 'root',
+  password: process.env.DB_PASSWORD || 'root',
+  database: process.env.DB_NAME || 'AppMessage',
+  waitForConnections: true,
+  connectionLimit: 10,
+  queueLimit: 0
 });
 
-const pool = mysql.createPool ({
-    host: 'localhost',
-    user: 'root',
-    password: 'root',
-    database: 'AppMessage',
-    waitForConnections: true,
-    connectionLimit: 10,
-    queueLimit: 0
-});
+const promisePool = pool.promise();
 
-module.exports = pool.promise();
+module.exports = promisePool;
