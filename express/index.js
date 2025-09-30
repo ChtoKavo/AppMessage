@@ -836,15 +836,6 @@ app.get('/messages/:chatId', async (req, res) => {
   }
 });
 
-const uploadDirs = ['uploads/images', 'uploads/videos', 'uploads/files', 'uploads/avatars'];
-uploadDirs.forEach(dir => {
-  const fullPath = path.join(__dirname, dir);
-  if (!fs.existsSync(fullPath)) {
-    fs.mkdirSync(fullPath, { recursive: true });
-    console.log(`Created directory: ${fullPath}`);
-  }
-});
-
 // Поиск пользователей
 app.get('/users/search/:query', async (req, res) => {
   try {

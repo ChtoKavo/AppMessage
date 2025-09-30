@@ -176,8 +176,6 @@ const Messenger = ({ currentUser }) => {
     }
   };
 
-  // Функция для отправки файла
-  // Замените существующую функцию sendFile на эту:
 const sendFile = async (file) => {
   if (!activeChat || !socket || uploadingFile) return;
 
@@ -190,18 +188,22 @@ const sendFile = async (file) => {
     formData.append('chat_id', activeChat.chat_id);
     formData.append('user_id', currentUser.user_id.toString());
 
-    // Определяем тип сообщения
     const fileType = file.type.startsWith('image/') ? 'image' : 
                     file.type.startsWith('video/') ? 'video' : 'file';
+    
+    const fileContent = getFileTypeText(file.type, file.name);
 
     // Оптимистичное обновление UI
     const tempMessage = {
       message_id: Date.now(),
       chat_id: activeChat.chat_id,
       user_id: currentUser.user_id,
-      content: file.name,
+      content: fileContent,
       message_type: fileType,
       attachment_url: URL.createObjectURL(file),
+      original_filename: file.name,
+      file_size: file.size,
+      file_type: file.type,
       user_name: currentUser.name,
       user_email: currentUser.email,
       created_at: new Date().toISOString(),
@@ -215,12 +217,20 @@ const sendFile = async (file) => {
     const response = await fetch(`${API_BASE_URL}/messages/upload`, {
       method: 'POST',
       body: formData
-      // Не устанавливаем Content-Type - браузер сделает это сам с boundary
     });
 
     if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.error || `Ошибка загрузки файла: ${response.status}`);
+      const errorText = await response.text();
+      let errorMessage = `Ошибка загрузки файла: ${response.status}`;
+      
+      try {
+        const errorData = JSON.parse(errorText);
+        errorMessage = errorData.error || errorMessage;
+      } catch {
+        errorMessage = errorText || errorMessage;
+      }
+      
+      throw new Error(errorMessage);
     }
 
     const result = await response.json();
@@ -239,15 +249,19 @@ const sendFile = async (file) => {
   } catch (error) {
     console.error('Ошибка отправки файла:', error);
     setError('Ошибка отправки файла: ' + error.message);
+    
     // Удаляем временное сообщение при ошибке
     setMessages(prev => prev.filter(msg => !msg.is_sending));
+    
+    // Показываем ошибку на 5 секунд
+    setTimeout(() => setError(''), 5000);
   } finally {
     setUploadingFile(false);
   }
 };
-  // Обработчик выбора файла
-  // Замените существующий обработчик handleFileSelect:
-const handleFileSelect = (event) => {
+
+  
+ const handleFileSelect = (event) => {
   const file = event.target.files[0];
   if (!file) return;
 
@@ -273,7 +287,14 @@ const handleFileSelect = (event) => {
     'application/pdf',
     'application/msword',
     'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-    'text/plain'
+    'application/vnd.ms-excel',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'application/vnd.ms-powerpoint',
+    'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    'application/zip',
+    'application/x-rar-compressed',
+    'text/plain',
+    'text/csv'
   ];
 
   if (!allowedTypes.includes(file.type)) {
@@ -298,52 +319,167 @@ const handleFileSelect = (event) => {
   }
 };
 
-  // Отправка текстового сообщения
-  const sendMessage = async (e) => {
-    e.preventDefault();
-    
-    if (!newMessage.trim() || !activeChat || !socket || sending) return;
+// Функция для получения иконки файла по типу
+const getFileIcon = (fileType, fileName = '') => {
+  // Определяем тип файла по MIME type или расширению
+  if (fileType.startsWith('image/')) {
+    return '🖼️'; // Иконка для изображений
+  } else if (fileType.startsWith('video/')) {
+    return '🎬'; // Иконка для видео
+  } else if (fileType === 'application/pdf') {
+    return '📕'; // Иконка для PDF
+  } else if (
+    fileType === 'application/msword' ||
+    fileType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
+    fileName.toLowerCase().endsWith('.doc') ||
+    fileName.toLowerCase().endsWith('.docx')
+  ) {
+    return '📄'; // Иконка для Word
+  } else if (
+    fileType === 'application/vnd.ms-excel' ||
+    fileType === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
+    fileName.toLowerCase().endsWith('.xls') ||
+    fileName.toLowerCase().endsWith('.xlsx')
+  ) {
+    return '📊'; // Иконка для Excel
+  } else if (
+    fileType === 'application/vnd.ms-powerpoint' ||
+    fileType === 'application/vnd.openxmlformats-officedocument.presentationml.presentation' ||
+    fileName.toLowerCase().endsWith('.ppt') ||
+    fileName.toLowerCase().endsWith('.pptx')
+  ) {
+    return '📽️'; // Иконка для PowerPoint
+  } else if (
+    fileType === 'application/zip' ||
+    fileType === 'application/x-rar-compressed' ||
+    fileName.toLowerCase().endsWith('.zip') ||
+    fileName.toLowerCase().endsWith('.rar')
+  ) {
+    return '📦'; // Иконка для архивов
+  } else if (
+    fileType === 'text/plain' ||
+    fileName.toLowerCase().endsWith('.txt')
+  ) {
+    return '📝'; // Иконка для текстовых файлов
+  } else if (
+    fileType === 'text/csv' ||
+    fileName.toLowerCase().endsWith('.csv')
+  ) {
+    return '📋'; // Иконка для CSV
+  } else {
+    return '📎'; // Иконка по умолчанию
+  }
+};
 
-    const messageData = {
+// Функция для получения человекочитаемого типа файла
+const getFileTypeText = (fileType, fileName = '') => {
+  if (fileType.startsWith('image/')) {
+    return 'Изображение';
+  } else if (fileType.startsWith('video/')) {
+    return 'Видео';
+  } else if (fileType === 'application/pdf') {
+    return 'PDF документ';
+  } else if (
+    fileType === 'application/msword' ||
+    fileType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+  ) {
+    return 'Документ Word';
+  } else if (
+    fileType === 'application/vnd.ms-excel' ||
+    fileType === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+  ) {
+    return 'Таблица Excel';
+  } else if (
+    fileType === 'application/vnd.ms-powerpoint' ||
+    fileType === 'application/vnd.openxmlformats-officedocument.presentationml.presentation'
+  ) {
+    return 'Презентация PowerPoint';
+  } else if (
+    fileType === 'application/zip' ||
+    fileType === 'application/x-rar-compressed'
+  ) {
+    return 'Архив';
+  } else if (fileType === 'text/plain') {
+    return 'Текстовый файл';
+  } else if (fileType === 'text/csv') {
+    return 'CSV файл';
+  } else {
+    // Пытаемся определить по расширению
+    const ext = fileName.split('.').pop()?.toLowerCase();
+    const extensionMap = {
+      'doc': 'Документ Word',
+      'docx': 'Документ Word',
+      'xls': 'Таблица Excel',
+      'xlsx': 'Таблица Excel',
+      'ppt': 'Презентация PowerPoint',
+      'pptx': 'Презентация PowerPoint',
+      'zip': 'Архив',
+      'rar': 'Архив',
+      'txt': 'Текстовый файл',
+      'csv': 'CSV файл'
+    };
+    return extensionMap[ext] || 'Файл';
+  }
+};
+
+  const sendMessage = async (e) => {
+  e.preventDefault();
+  
+  if (!newMessage.trim() || !activeChat || !socket || sending) return;
+
+  const messageData = {
+    chat_id: activeChat.chat_id,
+    user_id: currentUser.user_id,
+    content: newMessage.trim(),
+    message_type: 'text'
+  };
+
+  try {
+    setSending(true);
+    setError('');
+    
+    // Оптимистичное обновление UI
+    const tempMessage = {
+      message_id: Date.now(),
       chat_id: activeChat.chat_id,
       user_id: currentUser.user_id,
       content: newMessage.trim(),
-      message_type: 'text'
+      message_type: 'text',
+      user_name: currentUser.name,
+      user_email: currentUser.email,
+      created_at: new Date().toISOString(),
+      is_own: true,
+      is_sending: true
     };
 
-    try {
-      setSending(true);
-      
-      const tempMessage = {
-        message_id: Date.now(),
-        chat_id: activeChat.chat_id,
-        user_id: currentUser.user_id,
-        content: newMessage.trim(),
-        message_type: 'text',
-        user_name: currentUser.name,
-        user_email: currentUser.email,
-        created_at: new Date().toISOString(),
-        is_own: true,
-        is_sending: true
-      };
-
-      setMessages(prev => [...prev, tempMessage]);
-      setNewMessage('');
-      
-      if (messageInputRef.current) {
-        messageInputRef.current.focus();
-      }
-
-      socket.emit('send_message', messageData);
-      
-    } catch (error) {
-      console.error('Ошибка отправки:', error);
-      setError('Ошибка отправки сообщения');
-      setMessages(prev => prev.filter(msg => !msg.is_sending));
-    } finally {
-      setSending(false);
+    setMessages(prev => [...prev, tempMessage]);
+    setNewMessage('');
+    
+    if (messageInputRef.current) {
+      messageInputRef.current.focus();
     }
-  };
+
+    // Используем callback для обработки ошибок WebSocket
+    socket.emit('send_message', messageData, (response) => {
+      if (response && response.error) {
+        setError('Ошибка отправки: ' + response.error);
+        setMessages(prev => prev.filter(msg => !msg.is_sending));
+      }
+    });
+    
+    // Автоматически убираем временное сообщение через 5 секунд на всякий случай
+    setTimeout(() => {
+      setMessages(prev => prev.filter(msg => !msg.is_sending || msg.message_id !== tempMessage.message_id));
+    }, 5000);
+    
+  } catch (error) {
+    console.error('Ошибка отправки:', error);
+    setError('Ошибка отправки сообщения');
+    setMessages(prev => prev.filter(msg => !msg.is_sending));
+  } finally {
+    setSending(false);
+  }
+};
 
   // Отправка файла при подтверждении
   const confirmFileSend = () => {
@@ -403,56 +539,69 @@ const handleFileSelect = (event) => {
       .join(', ') || 'Пользователь';
   };
 
-  // Рендер содержимого сообщения
-  const renderMessageContent = (message) => {
-    switch (message.message_type) {
-      case 'image':
-        return (
-          <div className="message-media">
-            <img 
-              src={`${API_BASE_URL}${message.attachment_url}`} 
-              alt="Изображение"
-              className="message-image"
-              onClick={() => window.open(`${API_BASE_URL}${message.attachment_url}`, '_blank')}
-            />
-          </div>
-        );
+ // Рендер содержимого сообщения
+const renderMessageContent = (message) => {
+  switch (message.message_type) {
+    case 'image':
+      return (
+        <div className="message-media">
+          <img 
+            src={`${API_BASE_URL}${message.attachment_url}`} 
+            alt="Изображение"
+            className="message-image"
+            onClick={() => window.open(`${API_BASE_URL}${message.attachment_url}`, '_blank')}
+          />
+        </div>
+      );
+    
+    case 'video':
+      return (
+        <div className="message-media">
+          <video 
+            controls 
+            className="message-video"
+            poster={message.video_thumbnail ? `${API_BASE_URL}${message.video_thumbnail}` : undefined}
+          >
+            <source src={`${API_BASE_URL}${message.attachment_url}`} type="video/mp4" />
+            Ваш браузер не поддерживает видео.
+          </video>
+        </div>
+      );
+    
+    case 'file':
+      const fileName = message.original_filename || message.content;
+      const fileIcon = getFileIcon(message.file_type || '', fileName);
+      const fileTypeText = getFileTypeText(message.file_type || '', fileName);
       
-      case 'video':
-        return (
-          <div className="message-media">
-            <video 
-              controls 
-              className="message-video"
-              poster={message.video_thumbnail ? `${API_BASE_URL}${message.video_thumbnail}` : undefined}
-            >
-              <source src={`${API_BASE_URL}${message.attachment_url}`} type="video/mp4" />
-              Ваш браузер не поддерживает видео.
-            </video>
+      return (
+        <div className="message-file">
+          <div className="file-icon" title={fileTypeText}>
+            {fileIcon}
           </div>
-        );
-      
-      case 'file':
-        return (
-          <div className="message-file">
-            <div className="file-icon">📎</div>
-            <div className="file-info">
-              <a 
-                href={`${API_BASE_URL}${message.attachment_url}`} 
-                download
-                className="file-link"
-              >
-                {message.content || 'Файл'}
-              </a>
-            </div>
+          <div className="file-info">
+            <div className="file-name">{fileName}</div>
+            <div className="file-type">{fileTypeText}</div>
+            {message.file_size && (
+              <div className="file-size">
+                {(message.file_size / 1024 / 1024).toFixed(2)} MB
+              </div>
+            )}
           </div>
-        );
-      
-      default:
-        return <div className="message-text">{message.content}</div>;
-    }
-  };
-
+          <a 
+            href={`${API_BASE_URL}${message.attachment_url}`} 
+            download={fileName}
+            className="file-download-btn"
+            title="Скачать файл"
+          >
+            ⬇️
+          </a>
+        </div>
+      );
+    
+    default:
+      return <div className="message-text">{message.content}</div>;
+  }
+};
   // Группировка сообщений по дате
   const groupMessagesByDate = (messages) => {
     const groups = [];
@@ -647,45 +796,48 @@ const handleFileSelect = (event) => {
 
             {/* Форма ввода сообщения с возможностью отправки файлов */}
             <form className="message-input-form" onSubmit={sendMessage}>
-  {selectedFile && (
-    <div className="file-preview">
-      <div className="file-preview-content">
-        {filePreview ? (
-          filePreview.startsWith('data:image') ? (
-            <img src={filePreview} alt="Preview" className="file-preview-image" />
-          ) : filePreview.startsWith('blob:') ? (
-            <video src={filePreview} className="file-preview-video" controls />
-          ) : null
-        ) : (
-          <div className="file-preview-icon">📎</div>
-        )}
-        <div className="file-preview-info">
-          <div className="file-name">{selectedFile.name}</div>
-          <div className="file-size">
-            {(selectedFile.size / 1024 / 1024).toFixed(2)} MB
-          </div>
+{selectedFile && (
+  <div className="file-preview">
+    <div className="file-preview-content">
+      {filePreview ? (
+        filePreview.startsWith('data:image') ? (
+          <img src={filePreview} alt="Preview" className="file-preview-image" />
+        ) : filePreview.startsWith('blob:') ? (
+          <video src={filePreview} className="file-preview-video" controls />
+        ) : null
+      ) : (
+        <div className="file-preview-icon" title={getFileTypeText(selectedFile.type, selectedFile.name)}>
+          {getFileIcon(selectedFile.type, selectedFile.name)}
+        </div>
+      )}
+      <div className="file-preview-info">
+        <div className="file-name">{selectedFile.name}</div>
+        <div className="file-type">{getFileTypeText(selectedFile.type, selectedFile.name)}</div>
+        <div className="file-size">
+          {(selectedFile.size / 1024 / 1024).toFixed(2)} MB
         </div>
       </div>
-      <div className="file-preview-actions">
-        <button 
-          type="button" 
-          onClick={confirmFileSend}
-          disabled={uploadingFile}
-          className="send-file-btn"
-        >
-          {uploadingFile ? 'Отправка...' : 'Отправить'}
-        </button>
-        <button 
-          type="button" 
-          onClick={cancelFileSend}
-          disabled={uploadingFile}
-          className="cancel-file-btn"
-        >
-          Отмена
-        </button>
-      </div>
     </div>
-  )}
+    <div className="file-preview-actions">
+      <button 
+        type="button" 
+        onClick={confirmFileSend}
+        disabled={uploadingFile}
+        className="send-file-btn"
+      >
+        {uploadingFile ? 'Отправка...' : 'Отправить'}
+      </button>
+      <button 
+        type="button" 
+        onClick={cancelFileSend}
+        disabled={uploadingFile}
+        className="cancel-file-btn"
+      >
+        Отмена
+      </button>
+    </div>
+  </div>
+)}
 
   <div className="input-container">
     <input
