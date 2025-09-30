@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import './Profile.css';
 
 const Profile = ({ currentUser }) => {
@@ -6,6 +6,10 @@ const Profile = ({ currentUser }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [isEditing, setIsEditing] = useState(false);
+  const [avatarPreview, setAvatarPreview] = useState(null);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const fileInputRef = useRef(null);
+  
   const [editForm, setEditForm] = useState({
     name: '',
     bio: ''
@@ -43,6 +47,13 @@ const Profile = ({ currentUser }) => {
         name: userData.name || '',
         bio: userData.bio || ''
       });
+      
+      // Устанавливаем превью аватарки если есть
+      if (userData.avatar_url) {
+        setAvatarPreview(`${API_BASE_URL}${userData.avatar_url}?t=${Date.now()}`);
+      } else {
+        setAvatarPreview(null);
+      }
     } catch (error) {
       console.error('Error loading profile:', error);
       setError(error.message);
@@ -57,6 +68,7 @@ const Profile = ({ currentUser }) => {
 
   const handleCancel = () => {
     setIsEditing(false);
+    setAvatarPreview(user?.avatar_url ? `${API_BASE_URL}${user.avatar_url}` : null);
     if (user) {
       setEditForm({
         name: user.name || '',
@@ -69,37 +81,102 @@ const Profile = ({ currentUser }) => {
     try {
       setLoading(true);
       setError('');
+      setUploadProgress(0);
       
       const formData = new FormData();
       formData.append('name', editForm.name);
       formData.append('bio', editForm.bio);
 
-      const response = await fetch(`${API_BASE_URL}/api/users/${currentUser.user_id}/profile`, {
-        method: 'PUT',
-        body: formData
-      });
-
-      if (!response.ok) {
-        throw new Error('Ошибка сохранения профиля');
+      // Добавляем файл аватарки если выбран новый
+      if (fileInputRef.current?.files[0]) {
+        formData.append('avatar', fileInputRef.current.files[0]);
       }
 
-      const updatedUser = await response.json();
-      setUser(updatedUser);
-      setIsEditing(false);
+      const xhr = new XMLHttpRequest();
       
-      // Обновляем текущего пользователя в localStorage
-      const savedUser = JSON.parse(localStorage.getItem('currentUser') || '{}');
-      const updatedCurrentUser = {
-        ...savedUser,
-        name: updatedUser.name
-      };
-      localStorage.setItem('currentUser', JSON.stringify(updatedCurrentUser));
+      xhr.upload.addEventListener('progress', (e) => {
+        if (e.lengthComputable) {
+          const percentComplete = (e.loaded / e.total) * 100;
+          setUploadProgress(percentComplete);
+        }
+      });
+
+      xhr.addEventListener('load', () => {
+        if (xhr.status === 200) {
+          const updatedUser = JSON.parse(xhr.responseText);
+          setUser(updatedUser);
+          setIsEditing(false);
+          
+          // Обновляем текущего пользователя в localStorage
+          const savedUser = JSON.parse(localStorage.getItem('currentUser') || '{}');
+          const updatedCurrentUser = {
+            ...savedUser,
+            name: updatedUser.name,
+            avatar_url: updatedUser.avatar_url
+          };
+          localStorage.setItem('currentUser', JSON.stringify(updatedCurrentUser));
+          
+          // Сбрасываем превью
+          setAvatarPreview(updatedUser.avatar_url ? `${API_BASE_URL}${updatedUser.avatar_url}?t=${Date.now()}` : null);
+          setUploadProgress(0);
+        } else {
+          setError('Ошибка сохранения профиля');
+        }
+        setLoading(false);
+      });
+
+      xhr.addEventListener('error', () => {
+        setError('Ошибка сети при сохранении профиля');
+        setLoading(false);
+        setUploadProgress(0);
+      });
+
+      xhr.open('PUT', `${API_BASE_URL}/api/users/${currentUser.user_id}/profile`);
+      xhr.send(formData);
       
     } catch (error) {
       console.error('Error saving profile:', error);
       setError(error.message);
-    } finally {
       setLoading(false);
+      setUploadProgress(0);
+    }
+  };
+
+  const handleAvatarClick = () => {
+    if (isEditing) {
+      fileInputRef.current?.click();
+    }
+  };
+
+  const handleAvatarChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      // Проверяем тип файла
+      if (!file.type.startsWith('image/')) {
+        setError('Пожалуйста, выберите изображение');
+        return;
+      }
+
+      // Проверяем размер файла (5MB)
+      if (file.size > 5 * 1024 * 1024) {
+        setError('Размер файла не должен превышать 5MB');
+        return;
+      }
+
+      // Создаем превью
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        setAvatarPreview(e.target.result);
+      };
+      reader.readAsDataURL(file);
+      setError('');
+    }
+  };
+
+  const removeAvatar = () => {
+    setAvatarPreview(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
     }
   };
 
@@ -224,13 +301,58 @@ const Profile = ({ currentUser }) => {
 
       <div className="profile-content">
         <div className="profile-avatar-section">
-          <div className="avatar">
-            {user.name ? user.name.charAt(0).toUpperCase() : 'U'}
+          <div 
+            className={`avatar ${isEditing ? 'editable' : ''}`}
+            onClick={handleAvatarClick}
+            style={{
+              backgroundImage: avatarPreview ? `url(${avatarPreview})` : 'none'
+            }}
+          >
+            {!avatarPreview && (user.name ? user.name.charAt(0).toUpperCase() : 'U')}
           </div>
+          
+          {isEditing && (
+            <div className="avatar-controls">
+              <input
+                type="file"
+                ref={fileInputRef}
+                onChange={handleAvatarChange}
+                accept="image/*"
+                style={{ display: 'none' }}
+              />
+              <button 
+                type="button" 
+                onClick={handleAvatarClick}
+                className="avatar-upload-button"
+              >
+                Сменить фото
+              </button>
+              {avatarPreview && (
+                <button 
+                  type="button" 
+                  onClick={removeAvatar}
+                  className="avatar-remove-button"
+                >
+                  Удалить
+                </button>
+              )}
+            </div>
+          )}
+          
           <div className="online-status">
             <span className={`status-dot ${user.is_online ? 'online' : 'offline'}`}></span>
             {getOnlineStatus(user)}
           </div>
+
+          {uploadProgress > 0 && uploadProgress < 100 && (
+            <div className="upload-progress">
+              <div 
+                className="progress-bar" 
+                style={{ width: `${uploadProgress}%` }}
+              ></div>
+              <span>Загрузка: {Math.round(uploadProgress)}%</span>
+            </div>
+          )}
         </div>
 
         <div className="profile-info">

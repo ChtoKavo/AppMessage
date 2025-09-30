@@ -1,4 +1,3 @@
-
 const express = require('express');
 const http = require('http');
 const socketIo = require('socket.io');
@@ -27,6 +26,13 @@ app.use(cors({
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization"]
 }));
+
+app.use(cors({
+  origin: ["http://localhost:5173", "http://localhost:5173"],
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"]
+}));
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
@@ -37,30 +43,94 @@ if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
 }
 
-// Настройка multer для загрузки файлов
-const storage = multer.diskStorage({
+const mediaStorage = multer.diskStorage({
   destination: function (req, file, cb) {
-    cb(null, 'uploads/')
+    // Создаем папки по типам файлов
+    const fileType = file.mimetype.startsWith('image/') ? 'images' : 
+                    file.mimetype.startsWith('video/') ? 'videos' : 'files';
+    const dir = `uploads/${fileType}`;
+    
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    cb(null, dir);
   },
   filename: function (req, file, cb) {
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname))
+    const extension = path.extname(file.originalname);
+    cb(null, file.fieldname + '-' + uniqueSuffix + extension);
+  }
+});
+
+// Настройка multer для загрузки файлов
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    // Создаем папки по типам файлов
+    const fileType = file.mimetype.startsWith('image/') ? 'images' : 
+                    file.mimetype.startsWith('video/') ? 'videos' : 'files';
+    const dir = `uploads/${fileType}`;
+    
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    cb(null, dir);
+  },
+  filename: function (req, file, cb) {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    const extension = path.extname(file.originalname);
+    cb(null, file.fieldname + '-' + uniqueSuffix + extension);
   }
 });
 
 const upload = multer({ 
   storage: storage,
   limits: {
-    fileSize: 10 * 1024 * 1024 // 10MB limit
+    fileSize: 50 * 1024 * 1024 // 50MB limit для видео
   },
   fileFilter: (req, file, cb) => {
-    if (file.mimetype.startsWith('image/') || file.mimetype.startsWith('video/')) {
+    if (file.mimetype.startsWith('image/') || 
+        file.mimetype.startsWith('video/') ||
+        file.mimetype === 'application/pdf' ||
+        file.mimetype === 'application/msword' ||
+        file.mimetype === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
+        file.mimetype === 'text/plain') {
       cb(null, true);
     } else {
-      cb(new Error('Only image and video files are allowed!'), false);
+      cb(new Error('Разрешены только изображения, видео, PDF, Word и текстовые файлы!'), false);
     }
   }
 });
+
+// В разделе настройки multer добавьте:
+const avatarStorage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    cb(null, 'uploads/avatars/')
+  },
+  filename: function (req, file, cb) {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    cb(null, 'avatar-' + uniqueSuffix + path.extname(file.originalname));
+  }
+});
+
+const uploadAvatar = multer({ 
+  storage: avatarStorage,
+  limits: {
+    fileSize: 5 * 1024 * 1024 // 5MB limit for avatars
+  },
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype.startsWith('image/')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only image files are allowed for avatars!'), false);
+    }
+  }
+});
+
+// Создаем папку для аватарок если её нет
+const avatarsDir = path.join(__dirname, 'uploads/avatars');
+if (!fs.existsSync(avatarsDir)) {
+  fs.mkdirSync(avatarsDir, { recursive: true });
+}
 
 const PORT = process.env.PORT || 5001;
 const activeUsers = new Map();
@@ -78,22 +148,57 @@ const authenticateToken = async (req, res, next) => {
   next();
 };
 
+
 // WebSocket соединения
 io.on('connection', (socket) => {
   console.log('Пользователь подключился:', socket.id);
 
   // Регистрация пользователя
-  socket.on('register_user', (userId) => {
+  socket.on('register_user', async (userId) => {
     activeUsers.set(userId.toString(), socket.id);
     console.log(`Пользователь ${userId} зарегистрирован с socket ${socket.id}`);
     
     // Обновляем статус пользователя как онлайн
-    db.execute(
+    await db.execute(
       'UPDATE users SET is_online = TRUE, last_seen = NOW() WHERE user_id = ?',
       [userId]
-    ).catch(console.error);
+    );
     
+    // Уведомляем всех о новом онлайн пользователе
     socket.broadcast.emit('user_online', parseInt(userId));
+    
+    // Отправляем текущему пользователю список всех онлайн пользователей
+    const onlineUsers = Array.from(activeUsers.keys()).map(id => parseInt(id));
+    socket.emit('online_users_list', onlineUsers);
+  });
+
+  // Получение статуса пользователей
+  socket.on('get_user_status', async (userIds) => {
+    try {
+      if (!Array.isArray(userIds) || userIds.length === 0) return;
+      
+      const placeholders = userIds.map(() => '?').join(',');
+      const [users] = await db.execute(
+        `SELECT user_id, is_online, last_seen FROM users WHERE user_id IN (${placeholders})`,
+        userIds
+      );
+      
+      socket.emit('user_status_update', users);
+    } catch (error) {
+      console.error('Ошибка получения статуса пользователей:', error);
+    }
+  });
+
+  // Периодическая проверка активности
+  socket.on('user_activity', async (userId) => {
+    try {
+      await db.execute(
+        'UPDATE users SET last_seen = NOW() WHERE user_id = ?',
+        [userId]
+      );
+    } catch (error) {
+      console.error('Ошибка обновления активности:', error);
+    }
   });
 
   // Отправка сообщения
@@ -191,61 +296,132 @@ io.on('connection', (socket) => {
 
   // WebSocket обработчики - исправленные
 
-// Лайк поста
-socket.on('like_post', async (data) => {
-  try {
-    const { post_id, user_id } = data;
-    
-    if (!post_id || !user_id) {
-      socket.emit('like_error', { error: 'Отсутствуют обязательные параметры' });
-      return;
-    }
-
-    console.log('Processing like for post:', post_id, 'user:', user_id);
-
-    // Проверяем, не лайкал ли уже пользователь
-    const [existingLikes] = await db.execute(
-      'SELECT * FROM post_likes WHERE post_id = ? AND user_id = ?',
-      [post_id, user_id]
-    );
-
-    if (existingLikes.length > 0) {
-      // Убираем лайк
-      await db.execute(
-        'DELETE FROM post_likes WHERE post_id = ? AND user_id = ?',
-        [post_id, user_id]
-      );
+  // Лайк поста
+  socket.on('like_post', async (data) => {
+    try {
+      const { post_id, user_id } = data;
       
-      await db.execute(
-        'UPDATE posts SET likes_count = GREATEST(0, likes_count - 1) WHERE post_id = ?',
-        [post_id]
-      );
-
-      socket.emit('post_unliked', { post_id, user_id });
-      
-      // Уведомляем автора поста
-      const [posts] = await db.execute(
-        'SELECT user_id FROM posts WHERE post_id = ?',
-        [post_id]
-      );
-      
-      if (posts.length > 0) {
-        const authorSocketId = activeUsers.get(posts[0].user_id.toString());
-        if (authorSocketId) {
-          io.to(authorSocketId).emit('post_unliked_by_user', { post_id, user_id });
-        }
+      if (!post_id || !user_id) {
+        socket.emit('like_error', { error: 'Отсутствуют обязательные параметры' });
+        return;
       }
-    } else {
-      // Добавляем лайк
-      await db.execute(
-        'INSERT INTO post_likes (post_id, user_id) VALUES (?, ?)',
+
+      console.log('Processing like for post:', post_id, 'user:', user_id);
+
+      // Проверяем, не лайкал ли уже пользователь
+      const [existingLikes] = await db.execute(
+        'SELECT * FROM post_likes WHERE post_id = ? AND user_id = ?',
         [post_id, user_id]
       );
+
+      if (existingLikes.length > 0) {
+        // Убираем лайк
+        await db.execute(
+          'DELETE FROM post_likes WHERE post_id = ? AND user_id = ?',
+          [post_id, user_id]
+        );
+        
+        await db.execute(
+          'UPDATE posts SET likes_count = GREATEST(0, likes_count - 1) WHERE post_id = ?',
+          [post_id]
+        );
+
+        socket.emit('post_unliked', { post_id, user_id });
+        
+        // Уведомляем автора поста
+        const [posts] = await db.execute(
+          'SELECT user_id FROM posts WHERE post_id = ?',
+          [post_id]
+        );
+        
+        if (posts.length > 0) {
+          const authorSocketId = activeUsers.get(posts[0].user_id.toString());
+          if (authorSocketId) {
+            io.to(authorSocketId).emit('post_unliked_by_user', { post_id, user_id });
+          }
+        }
+      } else {
+        // Добавляем лайк
+        await db.execute(
+          'INSERT INTO post_likes (post_id, user_id) VALUES (?, ?)',
+          [post_id, user_id]
+        );
+        
+        await db.execute(
+          'UPDATE posts SET likes_count = likes_count + 1 WHERE post_id = ?',
+          [post_id]
+        );
+
+        // Создаем уведомление для автора поста
+        const [posts] = await db.execute(
+          'SELECT user_id FROM posts WHERE post_id = ?',
+          [post_id]
+        );
+        
+        if (posts.length > 0 && posts[0].user_id !== user_id) {
+          await db.execute(
+            'INSERT INTO notifications (user_id, from_user_id, type, post_id) VALUES (?, ?, "like", ?)',
+            [posts[0].user_id, user_id, post_id]
+          );
+
+          // Отправляем уведомление автору поста, если он онлайн
+          const authorSocketId = activeUsers.get(posts[0].user_id.toString());
+          if (authorSocketId) {
+            const [userData] = await db.execute(
+              'SELECT name FROM users WHERE user_id = ?',
+              [user_id]
+            );
+            
+            io.to(authorSocketId).emit('new_notification', {
+              type: 'like',
+              from_user_id: user_id,
+              from_user_name: userData[0]?.name,
+              post_id: post_id
+            });
+          }
+        }
+
+        socket.emit('post_liked', { post_id, user_id });
+      }
+
+    } catch (error) {
+      console.error('Ошибка лайка:', error);
+      socket.emit('like_error', { error: 'Не удалось обработать лайк' });
+    }
+  });
+
+  // Добавление комментария
+  socket.on('add_comment', async (commentData) => {
+    try {
+      const { post_id, user_id, content, parent_comment_id = null } = commentData;
       
+      if (!post_id || !user_id || !content) {
+        socket.emit('comment_error', { error: 'Отсутствуют обязательные параметры' });
+        return;
+      }
+
+      console.log('Adding comment:', { post_id, user_id, content });
+
+      const [result] = await db.execute(
+        'INSERT INTO comments (post_id, user_id, content, parent_comment_id) VALUES (?, ?, ?, ?)',
+        [post_id, user_id, content, parent_comment_id]
+      );
+
+      // Обновляем счетчик комментариев
       await db.execute(
-        'UPDATE posts SET likes_count = likes_count + 1 WHERE post_id = ?',
+        'UPDATE posts SET comments_count = comments_count + 1 WHERE post_id = ?',
         [post_id]
       );
+
+      // Получаем полные данные комментария
+      const [comments] = await db.execute(`
+        SELECT c.*, u.name as user_name, u.email as user_email 
+        FROM comments c 
+        JOIN users u ON c.user_id = u.user_id 
+        WHERE c.comment_id = ?
+      `, [result.insertId]);
+
+      const fullComment = comments[0];
 
       // Создаем уведомление для автора поста
       const [posts] = await db.execute(
@@ -255,11 +431,10 @@ socket.on('like_post', async (data) => {
       
       if (posts.length > 0 && posts[0].user_id !== user_id) {
         await db.execute(
-          'INSERT INTO notifications (user_id, from_user_id, type, post_id) VALUES (?, ?, "like", ?)',
-          [posts[0].user_id, user_id, post_id]
+          'INSERT INTO notifications (user_id, from_user_id, type, post_id, comment_id) VALUES (?, ?, "comment", ?, ?)',
+          [posts[0].user_id, user_id, post_id, result.insertId]
         );
 
-        // Отправляем уведомление автору поста, если он онлайн
         const authorSocketId = activeUsers.get(posts[0].user_id.toString());
         if (authorSocketId) {
           const [userData] = await db.execute(
@@ -268,94 +443,24 @@ socket.on('like_post', async (data) => {
           );
           
           io.to(authorSocketId).emit('new_notification', {
-            type: 'like',
+            type: 'comment',
             from_user_id: user_id,
             from_user_name: userData[0]?.name,
-            post_id: post_id
+            post_id: post_id,
+            comment_id: result.insertId
           });
         }
       }
 
-      socket.emit('post_liked', { post_id, user_id });
+      // Отправляем комментарий всем, кто смотрит этот пост
+      socket.broadcast.emit('new_comment', fullComment);
+      socket.emit('comment_added', fullComment);
+
+    } catch (error) {
+      console.error('Ошибка добавления комментария:', error);
+      socket.emit('comment_error', { error: 'Не удалось добавить комментарий' });
     }
-
-  } catch (error) {
-    console.error('Ошибка лайка:', error);
-    socket.emit('like_error', { error: 'Не удалось обработать лайк' });
-  }
-});
-
-// Добавление комментария
-socket.on('add_comment', async (commentData) => {
-  try {
-    const { post_id, user_id, content, parent_comment_id = null } = commentData;
-    
-    if (!post_id || !user_id || !content) {
-      socket.emit('comment_error', { error: 'Отсутствуют обязательные параметры' });
-      return;
-    }
-
-    console.log('Adding comment:', { post_id, user_id, content });
-
-    const [result] = await db.execute(
-      'INSERT INTO comments (post_id, user_id, content, parent_comment_id) VALUES (?, ?, ?, ?)',
-      [post_id, user_id, content, parent_comment_id]
-    );
-
-    // Обновляем счетчик комментариев
-    await db.execute(
-      'UPDATE posts SET comments_count = comments_count + 1 WHERE post_id = ?',
-      [post_id]
-    );
-
-    // Получаем полные данные комментария
-    const [comments] = await db.execute(`
-      SELECT c.*, u.name as user_name, u.email as user_email 
-      FROM comments c 
-      JOIN users u ON c.user_id = u.user_id 
-      WHERE c.comment_id = ?
-    `, [result.insertId]);
-
-    const fullComment = comments[0];
-
-    // Создаем уведомление для автора поста
-    const [posts] = await db.execute(
-      'SELECT user_id FROM posts WHERE post_id = ?',
-      [post_id]
-    );
-    
-    if (posts.length > 0 && posts[0].user_id !== user_id) {
-      await db.execute(
-        'INSERT INTO notifications (user_id, from_user_id, type, post_id, comment_id) VALUES (?, ?, "comment", ?, ?)',
-        [posts[0].user_id, user_id, post_id, result.insertId]
-      );
-
-      const authorSocketId = activeUsers.get(posts[0].user_id.toString());
-      if (authorSocketId) {
-        const [userData] = await db.execute(
-          'SELECT name FROM users WHERE user_id = ?',
-          [user_id]
-        );
-        
-        io.to(authorSocketId).emit('new_notification', {
-          type: 'comment',
-          from_user_id: user_id,
-          from_user_name: userData[0]?.name,
-          post_id: post_id,
-          comment_id: result.insertId
-        });
-      }
-    }
-
-    // Отправляем комментарий всем, кто смотрит этот пост
-    socket.broadcast.emit('new_comment', fullComment);
-    socket.emit('comment_added', fullComment);
-
-  } catch (error) {
-    console.error('Ошибка добавления комментария:', error);
-    socket.emit('comment_error', { error: 'Не удалось добавить комментарий' });
-  }
-});
+  });
 
   // Запрос дружбы
   socket.on('friend_request', async (data) => {
@@ -465,16 +570,16 @@ socket.on('add_comment', async (commentData) => {
   });
 
   // Отключение пользователя
-  socket.on('disconnect', () => {
+  socket.on('disconnect', async () => {
     for (let [userId, socketId] of activeUsers.entries()) {
       if (socketId === socket.id) {
         activeUsers.delete(userId);
         
         // Обновляем статус пользователя как оффлайн
-        db.execute(
+        await db.execute(
           'UPDATE users SET is_online = FALSE, last_seen = NOW() WHERE user_id = ?',
           [userId]
-        ).catch(console.error);
+        );
         
         socket.broadcast.emit('user_offline', parseInt(userId));
         console.log(`Пользователь ${userId} отключился`);
@@ -518,6 +623,49 @@ app.get('/users', async (req, res) => {
   } catch(error) {
     console.error(error);
     res.status(500).json({error: 'Database error'});
+  }
+});
+
+// Получение статуса пользователя
+app.get('/api/users/:userId/status', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    
+    const [users] = await db.execute(
+      'SELECT user_id, is_online, last_seen FROM users WHERE user_id = ?',
+      [userId]
+    );
+
+    if (users.length === 0) {
+      return res.status(404).json({ error: 'Пользователь не найден' });
+    }
+
+    res.json(users[0]);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Database error' });
+  }
+});
+
+// Получение статуса нескольких пользователей
+app.post('/api/users/status', async (req, res) => {
+  try {
+    const { userIds } = req.body;
+    
+    if (!Array.isArray(userIds) || userIds.length === 0) {
+      return res.status(400).json({ error: 'Список ID пользователей обязателен' });
+    }
+
+    const placeholders = userIds.map(() => '?').join(',');
+    const [users] = await db.execute(
+      `SELECT user_id, is_online, last_seen FROM users WHERE user_id IN (${placeholders})`,
+      userIds
+    );
+
+    res.json(users);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Database error' });
   }
 });
 
@@ -688,6 +836,15 @@ app.get('/messages/:chatId', async (req, res) => {
   }
 });
 
+const uploadDirs = ['uploads/images', 'uploads/videos', 'uploads/files', 'uploads/avatars'];
+uploadDirs.forEach(dir => {
+  const fullPath = path.join(__dirname, dir);
+  if (!fs.existsSync(fullPath)) {
+    fs.mkdirSync(fullPath, { recursive: true });
+    console.log(`Created directory: ${fullPath}`);
+  }
+});
+
 // Поиск пользователей
 app.get('/users/search/:query', async (req, res) => {
   try {
@@ -780,6 +937,93 @@ app.get('/api/posts', async (req, res) => {
   } catch (error) {
     console.error('Error loading posts:', error);
     res.status(500).json({ error: 'Database error: ' + error.message });
+  }
+});
+
+// Добавьте этот endpoint после других API маршрутов:
+app.post('/messages/upload', upload.single('file'), async (req, res) => {
+  try {
+    const { chat_id, user_id } = req.body;
+    
+    console.log('File upload request:', {
+      chat_id,
+      user_id,
+      file: req.file ? {
+        originalname: req.file.originalname,
+        mimetype: req.file.mimetype,
+        size: req.file.size,
+        filename: req.file.filename
+      } : 'No file'
+    });
+
+    if (!req.file) {
+      return res.status(400).json({ error: 'Файл не загружен' });
+    }
+
+    if (!chat_id || !user_id) {
+      return res.status(400).json({ error: 'chat_id и user_id обязательны' });
+    }
+
+    // Определяем тип сообщения
+    let message_type = 'file';
+    let content = req.file.originalname;
+    
+    if (req.file.mimetype.startsWith('image/')) {
+      message_type = 'image';
+      content = 'Изображение';
+    } else if (req.file.mimetype.startsWith('video/')) {
+      message_type = 'video';
+      content = 'Видео';
+    }
+
+    // Формируем правильный URL для файла
+    const fileType = req.file.mimetype.startsWith('image/') ? 'images' : 
+                    req.file.mimetype.startsWith('video/') ? 'videos' : 'files';
+    const attachment_url = `/uploads/${fileType}/${req.file.filename}`;
+
+    // Сохраняем сообщение в базу
+    const [result] = await db.execute(
+      'INSERT INTO messages (chat_id, user_id, content, message_type, attachment_url) VALUES (?, ?, ?, ?, ?)',
+      [chat_id, user_id, content, message_type, attachment_url]
+    );
+
+    // Получаем полные данные сообщения
+    const [messages] = await db.execute(`
+      SELECT m.*, u.name as user_name, u.email as user_email 
+      FROM messages m 
+      JOIN users u ON m.user_id = u.user_id 
+      WHERE m.message_id = ?
+    `, [result.insertId]);
+
+    const fullMessage = messages[0];
+
+    // Отправляем сообщение через WebSocket всем участникам чата
+    const [participants] = await db.execute(
+      'SELECT user_id FROM chat_participants WHERE chat_id = ?',
+      [chat_id]
+    );
+
+    participants.forEach(participant => {
+      const participantSocketId = activeUsers.get(participant.user_id.toString());
+      if (participantSocketId) {
+        io.to(participantSocketId).emit('new_message', fullMessage);
+      }
+    });
+
+    // Обновляем время последней активности чата
+    await db.execute(
+      'UPDATE chats SET last_activity = NOW() WHERE chat_id = ?',
+      [chat_id]
+    );
+
+    res.json({
+      message: 'Файл успешно загружен',
+      uploadedMessage: fullMessage
+    });
+
+  } catch (error) {
+    console.error('Ошибка загрузки файла:', error);
+    res.status(500).json({ error: 'Ошибка загрузки файла: ' + error.message });
   }
 });
 
@@ -896,61 +1140,6 @@ app.post('/api/posts', upload.single('media'), async (req, res) => {
       ]
     );
 
-    // Удаление друга по friendship_id
-// ==================== ENDPOINTS ДЛЯ УДАЛЕНИЯ ДРУЗЕЙ ====================
-
-// Удаление друга по friendship_id
-app.delete('/api/friends/:friendshipId', async (req, res) => {
-  try {
-    const { friendshipId } = req.params;
-    
-    console.log('DELETE /api/friends/:friendshipId called with ID:', friendshipId);
-
-    if (!friendshipId) {
-      return res.status(400).json({ error: 'ID дружбы обязателен' });
-    }
-
-    // Проверяем существование дружбы
-    const [friendships] = await db.execute(
-      'SELECT * FROM friendships WHERE friendship_id = ?',
-      [friendshipId]
-    );
-
-    if (friendships.length === 0) {
-      console.log('Friendship not found for ID:', friendshipId);
-      return res.status(404).json({ error: 'Запись о дружбе не найдена' });
-    }
-
-    const friendship = friendships[0];
-    console.log('Found friendship to delete:', friendship);
-
-    // Удаляем запись о дружбе
-    await db.execute(
-      'DELETE FROM friendships WHERE friendship_id = ?',
-      [friendshipId]
-    );
-
-    console.log('Friendship deleted successfully');
-
-    res.json({ 
-      success: true,
-      message: 'Друг успешно удален',
-      friendship_id: parseInt(friendshipId),
-      deleted_friendship: friendship
-    });
-
-  } catch (error) {
-    console.error('Ошибка удаления друга:', error);
-    res.status(500).json({ 
-      success: false,
-      error: 'Не удалось удалить друга: ' + error.message 
-    });
-  }
-});
-
-// Удаление друга по user_id (основной endpoint)
-
-
     // Получаем созданный пост с информацией об авторе
     const [posts] = await db.execute(`
       SELECT p.*, u.name as author_name, u.email as author_email 
@@ -975,7 +1164,6 @@ app.delete('/api/friends/:friendshipId', async (req, res) => {
     res.status(500).json({ error: 'Database error' });
   }
 });
-
 
 // Получение комментариев поста
 app.get('/api/posts/:postId/comments', async (req, res) => {
@@ -1020,6 +1208,7 @@ app.get('/api/posts/:postId/comments', async (req, res) => {
     res.status(500).json({ error: 'Database error' });
   }
 });
+
 // Получение друзей пользователя
 app.get('/api/users/:userId/friends', async (req, res) => {
   try {
@@ -1202,13 +1391,15 @@ app.put('/api/users/:userId/notifications/read-all', async (req, res) => {
   }
 });
 
+
+// Получение профиля пользователя
 // Получение профиля пользователя
 app.get('/api/users/:userId/profile', async (req, res) => {
   try {
     const { userId } = req.params;
     
     const [users] = await db.execute(`
-      SELECT u.user_id, u.name, u.email, u.role, u.created_at, u.is_online, u.last_seen,
+      SELECT u.user_id, u.name, u.email, u.role, u.created_at, u.is_online, u.last_seen, u.avatar_url, u.bio,
              COUNT(DISTINCT p.post_id) as posts_count,
              COUNT(DISTINCT f.friendship_id) as friends_count
       FROM users u
@@ -1228,8 +1419,6 @@ app.get('/api/users/:userId/profile', async (req, res) => {
     res.status(500).json({ error: 'Database error' });
   }
 });
-
-
 
 // Получение постов пользователя
 app.get('/api/users/:userId/posts', async (req, res) => {
@@ -1283,22 +1472,38 @@ app.get('/api/users/:userId/posts', async (req, res) => {
   }
 });
 
-app.put('/api/users/:userId/profile', upload.single('avatar'), async (req, res) => {
+// Обновление профиля пользователя с аватаркой
+app.put('/api/users/:userId/profile', uploadAvatar.single('avatar'), async (req, res) => {
   try {
     const { userId } = req.params;
     const { name, bio } = req.body;
     
-    let updateFields = ['name = ?'];
-    let params = [name];
+    console.log('Updating profile for user:', userId);
+    console.log('Request body:', { name, bio });
+    console.log('Uploaded file:', req.file);
+
+    let updateFields = [];
+    let params = [];
+
+    if (name !== undefined) {
+      updateFields.push('name = ?');
+      params.push(name);
+    }
     
     if (req.file) {
+      const avatarUrl = `/uploads/avatars/${req.file.filename}`;
       updateFields.push('avatar_url = ?');
-      params.push(`/uploads/${req.file.filename}`);
+      params.push(avatarUrl);
+      console.log('New avatar URL:', avatarUrl);
     }
     
     if (bio !== undefined) {
       updateFields.push('bio = ?');
       params.push(bio);
+    }
+    
+    if (updateFields.length === 0) {
+      return res.status(400).json({ error: 'Нет данных для обновления' });
     }
     
     params.push(userId);
@@ -1310,17 +1515,105 @@ app.put('/api/users/:userId/profile', upload.single('avatar'), async (req, res) 
 
     // Получаем обновленный профиль
     const [users] = await db.execute(`
-      SELECT user_id, name, email, role, created_at, is_online, last_seen 
+      SELECT user_id, name, email, role, created_at, is_online, last_seen, avatar_url, bio,
+             (SELECT COUNT(*) FROM posts WHERE user_id = ? AND is_published = TRUE) as posts_count,
+             (SELECT COUNT(*) FROM friendships WHERE (user_id1 = ? OR user_id2 = ?) AND status = 'accepted') as friends_count
       FROM users WHERE user_id = ?
-    `, [userId]);
+    `, [userId, userId, userId, userId]);
 
-    res.json(users[0]);
+    if (users.length === 0) {
+      return res.status(404).json({ error: 'Пользователь не найден' });
+    }
+
+    const updatedUser = users[0];
+    console.log('Updated user profile:', updatedUser);
+
+    res.json(updatedUser);
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: 'Database error' });
+    console.error('Error updating profile:', error);
+    res.status(500).json({ error: 'Database error: ' + error.message });
   }
 });
 
+// Получение аватарки пользователя
+app.get('/api/users/:userId/avatar', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    
+    const [users] = await db.execute(
+      'SELECT avatar_url FROM users WHERE user_id = ?',
+      [userId]
+    );
+
+    if (users.length === 0 || !users[0].avatar_url) {
+      // Возвращаем дефолтную аватарку или 404
+      return res.status(404).json({ error: 'Аватар не найден' });
+    }
+
+    const avatarPath = path.join(__dirname, users[0].avatar_url);
+    
+    // Проверяем существует ли файл
+    if (!fs.existsSync(avatarPath)) {
+      return res.status(404).json({ error: 'Файл аватара не найден' });
+    }
+
+    res.sendFile(avatarPath);
+  } catch (error) {
+    console.error('Error getting avatar:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Удаление друга по friendship_id
+app.delete('/api/friends/:friendshipId', async (req, res) => {
+  try {
+    const { friendshipId } = req.params;
+    
+    console.log('DELETE /api/friends/:friendshipId called with ID:', friendshipId);
+
+    if (!friendshipId) {
+      return res.status(400).json({ error: 'ID дружбы обязателен' });
+    }
+
+    // Проверяем существование дружбы
+    const [friendships] = await db.execute(
+      'SELECT * FROM friendships WHERE friendship_id = ?',
+      [friendshipId]
+    );
+
+    if (friendships.length === 0) {
+      console.log('Friendship not found for ID:', friendshipId);
+      return res.status(404).json({ error: 'Запись о дружбе не найдена' });
+    }
+
+    const friendship = friendships[0];
+    console.log('Found friendship to delete:', friendship);
+
+    // Удаляем запись о дружбе
+    await db.execute(
+      'DELETE FROM friendships WHERE friendship_id = ?',
+      [friendshipId]
+    );
+
+    console.log('Friendship deleted successfully');
+
+    res.json({ 
+      success: true,
+      message: 'Друг успешно удален',
+      friendship_id: parseInt(friendshipId),
+      deleted_friendship: friendship
+    });
+
+  } catch (error) {
+    console.error('Ошибка удаления друга:', error);
+    res.status(500).json({ 
+      success: false,
+      error: 'Не удалось удалить друга: ' + error.message 
+    });
+  }
+});
+
+// Удаление друга по user_id
 app.delete('/api/friends', async (req, res) => {
   try {
     const { user_id, friend_id } = req.body;
@@ -1479,4 +1772,4 @@ server.listen(PORT, () => {
   console.log(`🕒 Время запуска: ${new Date().toLocaleString()}`);
 });
 
-module.exports = { app, io, activeUsers };
+module.exports = { app, io, activeUsers }; 
