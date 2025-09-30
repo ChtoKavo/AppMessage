@@ -176,6 +176,66 @@ const Messenger = ({ currentUser }) => {
     }
   };
 
+  // Функция поиска пользователей
+  const searchUsers = async (query) => {
+    if (!query.trim()) {
+      setUsers([]);
+      return;
+    }
+
+    try {
+      setLoading(true);
+      const response = await fetch(`${API_BASE_URL}/users/search/${encodeURIComponent(query)}`);
+      if (!response.ok) throw new Error('Ошибка поиска пользователей');
+      const data = await response.json();
+      
+      // Фильтруем текущего пользователя из результатов
+      const filteredUsers = data.filter(user => user.user_id !== currentUser.user_id);
+      setUsers(filteredUsers);
+    } catch (error) {
+      console.error('Ошибка поиска пользователей:', error);
+      setError('Ошибка поиска пользователей');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Функция создания чата
+  const createChat = async (participantId) => {
+    try {
+      setLoading(true);
+      
+      // Сначала проверяем, существует ли уже чат
+      const checkResponse = await fetch(
+        `${API_BASE_URL}/chats/check/${currentUser.user_id}/${participantId}`
+      );
+      
+      if (!checkResponse.ok) throw new Error('Ошибка проверки чата');
+      
+      const checkData = await checkResponse.json();
+      
+      if (checkData.exists) {
+        // Если чат существует, активируем его
+        setActiveChat({ chat_id: checkData.chat_id });
+        loadMessages(checkData.chat_id);
+        setShowUserSearch(false);
+        setSearchQuery('');
+        setUsers([]);
+      } else {
+        // Если чата нет, создаем новый через WebSocket
+        socket.emit('create_chat', {
+          user_id: currentUser.user_id,
+          participant_id: participantId,
+          chat_type: 'private'
+        });
+      }
+    } catch (error) {
+      console.error('Ошибка создания чата:', error);
+      setError('Ошибка создания чата');
+      setLoading(false);
+    }
+  };
+
 const sendFile = async (file) => {
   if (!activeChat || !socket || uploadingFile) return;
 
@@ -643,7 +703,7 @@ const renderMessageContent = (message) => {
   return (
     <div className="messenger">
       <div className="chat-sidebar">
-        {/* Боковая панель чатов (остается без изменений) */}
+        {/* Боковая панель чатов */}
         <div className="sidebar-header">
           <div className="current-user-info">
             <div className="avatar small">
@@ -683,11 +743,45 @@ const renderMessageContent = (message) => {
               value={searchQuery}
               onChange={(e) => {
                 setSearchQuery(e.target.value);
-                // searchUsers(e.target.value);
+                searchUsers(e.target.value);
               }}
               className="search-input"
               autoFocus
             />
+            
+            {/* Результаты поиска */}
+            <div className="search-results">
+              {loading ? (
+                <div className="loading">Поиск...</div>
+              ) : users.length > 0 ? (
+                users.map(user => (
+                  <div 
+                    key={user.user_id}
+                    className="user-result"
+                    onClick={() => createChat(user.user_id)}
+                  >
+                    <div className="user-avatar">
+                      {user.name ? user.name.charAt(0).toUpperCase() : 'U'}
+                    </div>
+                    <div className="user-info">
+                      <div className="user-name">{user.name}</div>
+                      <div className="user-email">{user.email}</div>
+                    </div>
+                    <div className="user-status">
+                      {user.is_online ? (
+                        <span className="online">online</span>
+                      ) : (
+                        <span className="offline">
+                          был(а) {new Date(user.last_seen).toLocaleDateString('ru-RU')}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                ))
+              ) : searchQuery.trim() ? (
+                <div className="no-results">Пользователи не найдены</div>
+              ) : null}
+            </div>
           </div>
         )}
 

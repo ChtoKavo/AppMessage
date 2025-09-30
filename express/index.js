@@ -7,11 +7,28 @@ const cors = require('cors');
 const path = require('path');
 const multer = require('multer');
 const fs = require('fs');
+const nodemailer = require('nodemailer')
+const bodyParser = require('body-parser');
+const { error, info } = require('console');
 
 dotenv.config();
 
 const app = express();
 const server = http.createServer(app);
+app.use(bodyParser.json());
+
+
+const transporter = nodemailer.createTransport({
+  service: 'gmail',
+  auth: {
+    user: "Yra222225522@gmail.com",
+    pass: "hoxz zegf yeix jgoo",
+  },
+});
+
+
+
+
 const io = socketIo(server, {
   cors: {
     origin: "http://localhost:5173",
@@ -157,7 +174,7 @@ io.on('connection', (socket) => {
   socket.on('register_user', async (userId) => {
     activeUsers.set(userId.toString(), socket.id);
     console.log(`Пользователь ${userId} зарегистрирован с socket ${socket.id}`);
-    
+  
     // Обновляем статус пользователя как онлайн
     await db.execute(
       'UPDATE users SET is_online = TRUE, last_seen = NOW() WHERE user_id = ?',
@@ -692,23 +709,115 @@ app.post('/users', async (req, res) => {
       return res.status(400).json({ error: 'Пользователь с таким email уже существует' });
     }
 
+    // Вставляем пользователя с временным подтверждением
     const [result] = await db.execute(
-      'INSERT INTO users (name, email, password) VALUES (?, ?, ?)',
-      [name, email, password]
+      'INSERT INTO users (name, email, password, is_confirmed) VALUES (?, ?, ?, ?)',
+      [name, email, password, false]
     );
 
-    const [newUser] = await db.execute(
-      'SELECT user_id, name, email, role, created_at FROM users WHERE user_id = ?', 
-      [result.insertId]
-    );
-    
-    res.status(201).json(newUser[0]);
+    // Генерируем код подтверждения
+    const confirmationCode = Math.floor(100000 + Math.random() * 900000).toString();
+
+    // Сохраняем код подтверждения в базе
+    await db.execute('UPDATE users SET confirmation_code = ? WHERE email = ?', [confirmationCode, email]);
+
+    // Отправляем email с кодом подтверждения
+    const mailOptions = {
+      from: 'Yra222225522@gmail.com',
+      to: email,
+      subject: 'Код подтверждения регистрации',
+      text: `Ваш код подтверждения: ${confirmationCode}`
+    };
+
+    // Оборачиваем отправку email в Promise для асинхронной обработки
+    await new Promise((resolve, reject) => {
+      transporter.sendMail(mailOptions, (error, info) => {
+        if (error) {
+          console.error('Ошибка отправки email:', error);
+          reject(error);
+        } else {
+          console.log('Email отправлен:', info.response);
+          console.log('Код:' + confirmationCode);
+          resolve(info);
+        }
+      });
+    });
+
+    // Отправляем успешный ответ
+    res.status(201).json({ 
+      message: 'Регистрация успешна. Код подтверждения отправлен на ваш email.',
+      user_id: result.insertId,
+      email: email,
+      requires_confirmation: true
+    });
+
   } catch(error) {
     console.error('Database error:', error);
+    
+    // Если ошибка связана с отправкой email, но пользователь создан
     if (error.code === 'ER_DUP_ENTRY' || error.errno === 1062) {
-      return res.status(400).json({error: 'Пользователь с таким email уже существует'});
+      return res.status(400).json({ error: 'Пользователь с таким email уже существует' });
     }
-    res.status(500).json({error: 'Внутренняя ошибка сервера'});
+    
+    res.status(500).json({ error: 'Внутренняя ошибка сервера' });
+  }
+});
+
+// Добавьте также endpoint для подтверждения email
+app.post('/confirm-email', async (req, res) => {
+  try {
+    const { email, confirmationCode } = req.body;
+
+    if (!email || !confirmationCode) {
+      return res.status(400).json({ error: 'Email и код подтверждения обязательны' });
+    }
+
+    // Проверяем код подтверждения
+    const [users] = await db.execute(
+      'SELECT * FROM users WHERE email = ? AND confirmation_code = ?',
+      [email, confirmationCode]
+    );
+
+    if (users.length === 0) {
+      return res.status(400).json({ error: 'Неверный код подтверждения' });
+    }
+
+    // Активируем аккаунт
+    await db.execute(
+      'UPDATE users SET is_confirmed = true, confirmation_code = NULL WHERE email = ?',
+      [email]
+    );
+
+    // Получаем обновленные данные пользователя
+    const [confirmedUser] = await db.execute(
+      'SELECT user_id, name, email, role, created_at FROM users WHERE email = ?',
+      [email]
+    );
+
+    res.status(200).json({
+      message: 'Email успешно подтвержден',
+      user: confirmedUser[0]
+    });
+
+  } catch (error) {
+    console.error('Ошибка подтверждения email:', error);
+    res.status(500).json({ error: 'Внутренняя ошибка сервера' });
+  }
+});
+
+app.post('/confirm-email', async (req, res) => {
+  const {email, confirmationCode} = req.body;
+
+  const [rows] = await db.execute('SELECT confirmation_code FROM users WHERE email = ?', [email])
+  const validcode = rows[0]?.confirmation_code;
+
+  if(confirmationCode === validcode) {
+    await db.execute('UPDATE user set email_verified = TRUE WHERE email = ?', [email]);
+    res.status(200).json({message: 'Ну ты зарегался, что сказать'});
+  }
+  else
+  {
+    res.status(500).json({message: 'Неа, пошел вон отсюда'})
   }
 });
 
@@ -855,14 +964,14 @@ app.get('/users/search/:query', async (req, res) => {
 
 // ==================== API ДЛЯ СОЦИАЛЬНЫХ ФУНКЦИЙ ====================
 
-// Получение постов - исправленная версия
+
 app.get('/api/posts', async (req, res) => {
   try {
     const { page = 1, limit = 10, user_id } = req.query;
     
     console.log('Loading posts with params:', { user_id, page, limit });
 
-    // Альтернативный подход без LIMIT/OFFSET параметров
+    
     let query = `
       SELECT p.*, u.name as author_name, u.email as author_email
       FROM posts p
@@ -1504,7 +1613,7 @@ app.put('/api/users/:userId/profile', uploadAvatar.single('avatar'), async (req,
       params
     );
 
-    // Получаем обновленный профиль
+
     const [users] = await db.execute(`
       SELECT user_id, name, email, role, created_at, is_online, last_seen, avatar_url, bio,
              (SELECT COUNT(*) FROM posts WHERE user_id = ? AND is_published = TRUE) as posts_count,
@@ -1526,7 +1635,7 @@ app.put('/api/users/:userId/profile', uploadAvatar.single('avatar'), async (req,
   }
 });
 
-// Получение аватарки пользователя
+
 app.get('/api/users/:userId/avatar', async (req, res) => {
   try {
     const { userId } = req.params;
