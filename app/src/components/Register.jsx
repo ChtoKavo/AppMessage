@@ -1,18 +1,23 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
+import './Register.css';
 
 const Register = ({ onRegister, onSwitchToLogin }) => {
   const [formData, setFormData] = useState({
     name: '',
+    surname: '',
+    nick: '',
     email: '',
     password: '',
     confirmPassword: ''
   });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const [step, setStep] = useState('register'); // 'register' или 'confirm'
-  const [confirmationCode, setConfirmationCode] = useState('');
+  const [step, setStep] = useState('register'); 
+  const [confirmationCode, setConfirmationCode] = useState(['', '', '', '', '', '']);
   const [userEmail, setUserEmail] = useState('');
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
 
+  const inputRefs = useRef([]);
   const API_BASE_URL = 'http://localhost:5001';
 
   const handleChange = (e) => {
@@ -23,12 +28,69 @@ const Register = ({ onRegister, onSwitchToLogin }) => {
     setError('');
   };
 
-  // Шаг 1: Регистрация и отправка кода подтверждения
+  const handleCodeChange = (index, value) => {
+    // Разрешаем только цифры и буквы
+    const sanitizedValue = value.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+    
+    if (sanitizedValue.length <= 1) {
+      const newCode = [...confirmationCode];
+      newCode[index] = sanitizedValue;
+      setConfirmationCode(newCode);
+
+      // Автоматически переходим к следующему полю
+      if (sanitizedValue && index < 5) {
+        inputRefs.current[index + 1]?.focus();
+      }
+    }
+  };
+
+  const handleCodeKeyDown = (index, e) => {
+    // Обработка Backspace
+    if (e.key === 'Backspace') {
+      if (!confirmationCode[index] && index > 0) {
+        // Если поле пустое и нажали Backspace - переходим к предыдущему полю
+        const newCode = [...confirmationCode];
+        newCode[index - 1] = '';
+        setConfirmationCode(newCode);
+        inputRefs.current[index - 1]?.focus();
+      } else if (confirmationCode[index]) {
+        // Если в поле есть значение - очищаем его
+        const newCode = [...confirmationCode];
+        newCode[index] = '';
+        setConfirmationCode(newCode);
+      }
+    }
+
+    // Обработка стрелок
+    if (e.key === 'ArrowLeft' && index > 0) {
+      inputRefs.current[index - 1]?.focus();
+    }
+    if (e.key === 'ArrowRight' && index < 5) {
+      inputRefs.current[index + 1]?.focus();
+    }
+  };
+
+  const handleCodePaste = (e) => {
+    e.preventDefault();
+    const pasteData = e.clipboardData.getData('text').replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+    
+    if (pasteData.length === 6) {
+      const newCode = pasteData.split('');
+      setConfirmationCode(newCode);
+      
+      // Фокусируем последнее поле
+      inputRefs.current[5]?.focus();
+    }
+  };
+
+  const getFullCode = () => {
+    return confirmationCode.join('');
+  };
+
   const handleRegister = async (e) => {
     e.preventDefault();
     setError('');
 
-    // Валидация
     if (formData.password !== formData.confirmPassword) {
       setError('Пароли не совпадают');
       return;
@@ -36,6 +98,21 @@ const Register = ({ onRegister, onSwitchToLogin }) => {
 
     if (formData.password.length < 6) {
       setError('Пароль должен содержать минимум 6 символов');
+      return;
+    }
+
+    if (!acceptedTerms) {
+      setError('Необходимо принять условия использования');
+      return;
+    }
+
+    if (!formData.name.trim()) {
+      setError('Имя обязательно для заполнения');
+      return;
+    }
+
+    if (!formData.surname.trim()) {
+      setError('Фамилия обязательна для заполнения');
       return;
     }
 
@@ -49,6 +126,8 @@ const Register = ({ onRegister, onSwitchToLogin }) => {
         },
         body: JSON.stringify({
           name: formData.name,
+          surname: formData.surname,
+          nick: formData.nick || null,
           email: formData.email,
           password: formData.password
         })
@@ -58,10 +137,10 @@ const Register = ({ onRegister, onSwitchToLogin }) => {
       console.log('Register response:', data);
 
       if (response.ok) {
-        // Сохраняем email для подтверждения
         setUserEmail(formData.email);
-        // Переходим к шагу подтверждения
         setStep('confirm');
+        // Сбрасываем код при переходе к подтверждению
+        setConfirmationCode(['', '', '', '', '', '']);
       } else {
         setError(data.error || 'Ошибка регистрации');
       }
@@ -73,119 +152,175 @@ const Register = ({ onRegister, onSwitchToLogin }) => {
     }
   };
 
-  // Шаг 2: Подтверждение email
   const handleConfirm = async (e) => {
-  e.preventDefault();
-  setError('');
+    e.preventDefault();
+    setError('');
 
-  if (!confirmationCode) {
-    setError('Введите код подтверждения');
-    return;
-  }
-
-  setLoading(true);
-
-  try {
-    const response = await fetch(`${API_BASE_URL}/confirm-email`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ 
-        email: userEmail, 
-        confirmationCode: confirmationCode 
-      }),
-    });
-
-    const data = await response.json();
-    console.log('Confirm response:', data); // Для отладки
-    
-    if (response.ok) {
-      // Проверяем разные возможные форматы ответа
-      if (data.user && data.user.user_id && data.user.name && data.user.email) {
-        // Формат: { user: { user_id, name, email, ... } }
-        onRegister(data.user);
-      } else if (data.user_id && data.name && data.email) {
-        // Формат: { user_id, name, email, ... } (прямо в data)
-        onRegister(data);
-      } else {
-        console.error('Некорректный формат данных:', data);
-        throw new Error('Некорректные данные пользователя в ответе сервера');
-      }
-    } else {
-      setError(data.error || 'Ошибка подтверждения email');
+    const fullCode = getFullCode();
+    if (fullCode.length !== 6) {
+      setError('Введите полный код подтверждения (6 символов)');
+      return;
     }
-  } catch (error) {
-    console.error('Ошибка подтверждения:', error);
-    setError(error.message || 'Ошибка соединения с сервером');
-  } finally {
-    setLoading(false);
-  }
-};
 
-  // Форма регистрации
+    setLoading(true);
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/confirm-email`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          email: userEmail, 
+          confirmationCode: fullCode 
+        }),
+      });
+
+      const data = await response.json();
+      console.log('Confirm response:', data);
+      
+      if (response.ok) {
+        if (data.user && data.user.user_id && data.user.name && data.user.email) {
+          onRegister(data.user);
+        } else if (data.user_id && data.name && data.email) {
+          onRegister(data);
+        } else {
+          console.error('Некорректный формат данных:', data);
+          throw new Error('Некорректные данные пользователя в ответе сервера');
+        }
+      } else {
+        setError(data.error || 'Ошибка подтверждения email');
+      }
+    } catch (error) {
+      console.error('Ошибка подтверждения:', error);
+      setError(error.message || 'Ошибка соединения с сервером');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Фокусируем первое поле при монтировании формы подтверждения
+  useEffect(() => {
+    if (step === 'confirm' && inputRefs.current[0]) {
+      inputRefs.current[0].focus();
+    }
+  }, [step]);
+
   const renderRegisterForm = () => (
-    <div className="login-container">
-      <div className="login-form">
-        <h2>Регистрация</h2>
-        
-        <form onSubmit={handleRegister}>
+    <div className="register-container">
+      <div className="sphere-1"></div>
+      <div className="sphere-2"></div>
+      <div className="sphere-3"></div>
+      
+      <div className="header-sphere">
+        <div className="header-content">
+          <button 
+            className="back-button"
+            onClick={onSwitchToLogin}
+            type="button"
+          >
+            ← Назад
+          </button>
+          <h1 className="register-title">Регистрация</h1>
+        </div>
+      </div>
+      
+      <div className="register-form">
+        <form className="form-registration" onSubmit={handleRegister}>
           <div className="form-group">
-            <label htmlFor="name">Имя:</label>
             <input
+              className='inputlol'
               type="text"
               id="name"
               name="name"
               value={formData.name}
               onChange={handleChange}
               required
-              placeholder="Введите ваше имя"
+              placeholder="Введите ваше имя*"
             />
           </div>
 
           <div className="form-group">
-            <label htmlFor="email">Email:</label>
             <input
+              className='inputlol'
+              type="text"
+              id="surname"
+              name="surname"
+              value={formData.surname}
+              onChange={handleChange}
+              required
+              placeholder="Введите вашу фамилию*"
+            />
+          </div>
+
+          <div className="form-group">
+            <input
+              className='inputlol'
+              type="text"
+              id="nick"
+              name="nick"
+              value={formData.nick}
+              onChange={handleChange}
+              placeholder="Введите ваш никнейм (необязательно)"
+            />
+          </div>
+
+          <div className="form-group">
+            <input
+              className='inputlol'
               type="email"
               id="email"
               name="email"
               value={formData.email}
               onChange={handleChange}
               required
-              placeholder="Введите ваш email"
+              placeholder="Введите ваш email*"
             />
           </div>
 
           <div className="form-group">
-            <label htmlFor="password">Пароль:</label>
             <input
+              className='inputlol'
               type="password"
               id="password"
               name="password"
               value={formData.password}
               onChange={handleChange}
               required
-              placeholder="Введите пароль (мин. 6 символов)"
+              placeholder="Введите пароль (мин. 6 символов)*"
             />
           </div>
 
           <div className="form-group">
-            <label htmlFor="confirmPassword">Подтвердите пароль:</label>
             <input
+              className='inputlol'
               type="password"
               id="confirmPassword"
               name="confirmPassword"
               value={formData.confirmPassword}
               onChange={handleChange}
               required
-              placeholder="Повторите пароль"
+              placeholder="Повторите пароль*"
             />
+          </div>
+
+          <div className="terms-group">
+            <label className="terms-label">
+              <input
+                type="checkbox"
+                checked={acceptedTerms}
+                onChange={(e) => setAcceptedTerms(e.target.checked)}
+                className="terms-checkbox"
+              />
+              <span className="checkmark"></span>
+              Я принимаю условия и даю согласие на обработку моих персональных данных согласно 
+            </label>
           </div>
 
           {error && <div className="error-message">{error}</div>}
 
           <button 
             type="submit" 
-            className="login-button"
-            disabled={loading}
+            className="register-button"
+            disabled={loading || !acceptedTerms}
           >
             {loading ? 'Регистрация...' : 'Зарегистрироваться'}
           </button>
@@ -205,42 +340,67 @@ const Register = ({ onRegister, onSwitchToLogin }) => {
     </div>
   );
 
-  // Форма подтверждения email
   const renderConfirmationForm = () => (
-    <div className="login-container">
-      <div className="login-form">
-        <h2>Подтверждение email</h2>
-        <p>На адрес <strong>{userEmail}</strong> был отправлен код подтверждения.</p>
-        <p>Введите код для завершения регистрации:</p>
+    <div className="register-container">
+      <div className="sphere-1"></div>
+      <div className="sphere-2"></div>
+      <div className="sphere-3"></div>
+      
+      <div className="header-sphere">
+        <div className="header-content">
+          <button 
+            className="back-button"
+            onClick={() => setStep('register')}
+            type="button"
+          >
+            ← Назад
+          </button>
+          <h1 className="register-title">Подтверждение</h1>
+        </div>
+      </div>
+      
+      <div className="register-form">
+        <div className="confirmation-message">
+          На адрес <span className="confirmation-email">{userEmail}</span> был отправлен код подтверждения.
+        </div>
+        <div className="confirmation-message">
+          Введите код для завершения регистрации:
+        </div>
         
-        <form onSubmit={handleConfirm}>
-          <div className="form-group">
-            <label htmlFor="confirmationCode">Код подтверждения:</label>
-            <input
-              type="text"
-              id="confirmationCode"
-              value={confirmationCode}
-              onChange={(e) => setConfirmationCode(e.target.value)}
-              required
-              placeholder="Введите код из письма"
-            />
+        <form className="confirmation-form" onSubmit={handleConfirm}>
+          <div className="code-inputs-container">
+            {confirmationCode.map((digit, index) => (
+              <input
+                key={index}
+                ref={(el) => (inputRefs.current[index] = el)}
+                className="code-input"
+                type="text"
+                value={digit}
+                onChange={(e) => handleCodeChange(index, e.target.value)}
+                onKeyDown={(e) => handleCodeKeyDown(index, e)}
+                onPaste={handleCodePaste}
+                maxLength="1"
+                required
+                autoComplete="off"
+              />
+            ))}
           </div>
 
           {error && <div className="error-message">{error}</div>}
 
           <button 
             type="submit" 
-            className="login-button"
-            disabled={loading}
+            className="confirm-button"
+            disabled={loading || getFullCode().length !== 6}
           >
             {loading ? 'Подтверждение...' : 'Подтвердить email'}
           </button>
         </form>
 
-        <div className="switch-auth">
+        <div className="confirmation-switch">
           <p>Не получили код? 
             <span 
-              className="switch-link" 
+              className="confirmation-link" 
               onClick={() => setStep('register')}
             >
               Вернуться к регистрации
@@ -251,7 +411,6 @@ const Register = ({ onRegister, onSwitchToLogin }) => {
     </div>
   );
 
-  // Рендерим соответствующую форму в зависимости от шага
   return step === 'register' ? renderRegisterForm() : renderConfirmationForm();
 };
 

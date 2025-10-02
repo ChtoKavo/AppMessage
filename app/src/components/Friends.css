@@ -357,7 +357,6 @@
 .search-input {
   width: 100%;
   padding: 15px 50px 15px 20px;
-  border: 2px solid #e0e0e0;
   border-radius: 25px;
   font-size: 16px;
   transition: border-color 0.3s;
@@ -365,7 +364,6 @@
 
 .search-input:focus {
   outline: none;
-  border-color: #3498db;
 }
 
 .search-icon {

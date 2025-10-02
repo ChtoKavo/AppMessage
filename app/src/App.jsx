@@ -107,12 +107,7 @@ function App() {
           <header className="app-header">
             <div className="header-content">
               <h1>Социальная сеть</h1>
-              <div className="user-info">
-                <span className="welcome-text">Привет, {currentUser.name}</span>
-                <button onClick={handleLogout} className="logout-button">
-                  Выйти
-                </button>
-              </div>
+             
             </div>
           </header>
 
@@ -148,6 +143,15 @@ function App() {
               >
                 👤 Профиль
               </button>
+
+               <div className="user-info">
+  <span className="welcome-text">
+    {window.innerWidth > 480 ? `Привет, ${currentUser.name}` : currentUser.name}
+  </span>
+  <button onClick={handleLogout} className="logout-button">
+    {window.innerWidth > 480 ? 'Выйти' : '🚪'}
+  </button>
+</div>
             </nav>
 
             <main className="app-content">

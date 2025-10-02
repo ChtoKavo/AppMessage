@@ -37,23 +37,30 @@ body {
   justify-content: space-between;
   align-items: center;
   padding: 0 20px;
+  flex-wrap: wrap; /* Добавляем перенос элементов */
+  gap: 10px; /* Добавляем отступ между элементами */
 }
+
 
 .header-content h1 {
   margin: 0;
   font-size: 24px;
   font-weight: 600;
+  flex-shrink: 0; /* Запрещаем сжатие заголовка */
 }
 
 .user-info {
   display: flex;
   align-items: center;
   gap: 15px;
+  flex-wrap: wrap; /* Разрешаем перенос элементов */
+  justify-content: flex-end; /* Выравниваем по правому краю */
 }
 
 .welcome-text {
   font-size: 14px;
   opacity: 0.9;
+  white-space: nowrap; /* Запрещаем перенос текста */
 }
 
 .logout-button {
@@ -65,6 +72,8 @@ body {
   cursor: pointer;
   transition: all 0.3s ease;
   font-size: 14px;
+  white-space: nowrap; /* Запрещаем перенос текста */
+  flex-shrink: 0; /* Запрещаем сжатие кнопки */
 }
 
 .logout-button:hover {

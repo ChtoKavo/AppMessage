@@ -686,13 +686,13 @@ app.post('/api/users/status', async (req, res) => {
   }
 });
 
-// Регистрация пользователя
+
 app.post('/users', async (req, res) => {
   try {
-    const { name, email, password } = req.body;
+    const { name, surname, nick, email, password } = req.body;
     
-    if (!name || !email || !password) {
-      return res.status(400).json({ error: 'Все поля обязательны для заполнения' });
+    if (!name || !surname || !email || !password) {
+      return res.status(400).json({ error: 'Все обязательные поля должны быть заполнены' });
     }
 
     if (password.length < 6) {
@@ -711,8 +711,8 @@ app.post('/users', async (req, res) => {
 
     // Вставляем пользователя с временным подтверждением
     const [result] = await db.execute(
-      'INSERT INTO users (name, email, password, is_confirmed) VALUES (?, ?, ?, ?)',
-      [name, email, password, false]
+      'INSERT INTO users (name, surname, nick, email, password, is_confirmed) VALUES (?, ?, ?, ?, ?, ?)',
+      [name, surname, nick, email, password, false]
     );
 
     // Генерируем код подтверждения
@@ -754,7 +754,6 @@ app.post('/users', async (req, res) => {
   } catch(error) {
     console.error('Database error:', error);
     
-    // Если ошибка связана с отправкой email, но пользователь создан
     if (error.code === 'ER_DUP_ENTRY' || error.errno === 1062) {
       return res.status(400).json({ error: 'Пользователь с таким email уже существует' });
     }
@@ -763,7 +762,6 @@ app.post('/users', async (req, res) => {
   }
 });
 
-// Добавьте также endpoint для подтверждения email
 app.post('/confirm-email', async (req, res) => {
   try {
     const { email, confirmationCode } = req.body;
@@ -772,7 +770,6 @@ app.post('/confirm-email', async (req, res) => {
       return res.status(400).json({ error: 'Email и код подтверждения обязательны' });
     }
 
-    // Проверяем код подтверждения
     const [users] = await db.execute(
       'SELECT * FROM users WHERE email = ? AND confirmation_code = ?',
       [email, confirmationCode]
@@ -782,15 +779,13 @@ app.post('/confirm-email', async (req, res) => {
       return res.status(400).json({ error: 'Неверный код подтверждения' });
     }
 
-    // Активируем аккаунт
     await db.execute(
       'UPDATE users SET is_confirmed = true, confirmation_code = NULL WHERE email = ?',
       [email]
     );
 
-    // Получаем обновленные данные пользователя
     const [confirmedUser] = await db.execute(
-      'SELECT user_id, name, email, role, created_at FROM users WHERE email = ?',
+      'SELECT user_id, name, surname, nick, email, role, created_at FROM users WHERE email = ?',
       [email]
     );
 
@@ -805,23 +800,9 @@ app.post('/confirm-email', async (req, res) => {
   }
 });
 
-app.post('/confirm-email', async (req, res) => {
-  const {email, confirmationCode} = req.body;
 
-  const [rows] = await db.execute('SELECT confirmation_code FROM users WHERE email = ?', [email])
-  const validcode = rows[0]?.confirmation_code;
 
-  if(confirmationCode === validcode) {
-    await db.execute('UPDATE user set email_verified = TRUE WHERE email = ?', [email]);
-    res.status(200).json({message: 'Ну ты зарегался, что сказать'});
-  }
-  else
-  {
-    res.status(500).json({message: 'Неа, пошел вон отсюда'})
-  }
-});
 
-// Получение чатов пользователя
 app.get('/chats/:userId', async (req, res) => {
   try {
     const userId = req.params.userId;
@@ -858,9 +839,9 @@ app.post('/auth/login', async (req, res) => {
     }
 
     const [users] = await db.execute(
-      'SELECT * FROM users WHERE email = ?',
-      [email]
-    );
+  'SELECT user_id, name, surname, nick, email, password, role, is_confirmed FROM users WHERE email = ?',
+  [email]
+)
 
     if (users.length === 0) {
       return res.status(401).json({ error: 'Пользователь не найден' });
@@ -895,15 +876,17 @@ app.post('/auth/login', async (req, res) => {
 app.get('/auth/me', async (req, res) => {
   try {
     const userId = req.query.userId;
+
+    
     
     if (!userId) {
       return res.status(400).json({ error: 'ID пользователя обязателен' });
     }
 
     const [users] = await db.execute(
-      'SELECT user_id, name, email, role, created_at, is_online, last_seen FROM users WHERE user_id = ?',
-      [userId]
-    );
+  'SELECT user_id, name, surname, nick, email, role, created_at, is_online, last_seen FROM users WHERE user_id = ?',
+  [userId]
+);
 
     if (users.length === 0) {
       return res.status(404).json({ error: 'Пользователь не найден' });
@@ -1493,21 +1476,20 @@ app.put('/api/users/:userId/notifications/read-all', async (req, res) => {
 
 
 // Получение профиля пользователя
-// Получение профиля пользователя
 app.get('/api/users/:userId/profile', async (req, res) => {
   try {
     const { userId } = req.params;
     
     const [users] = await db.execute(`
-      SELECT u.user_id, u.name, u.email, u.role, u.created_at, u.is_online, u.last_seen, u.avatar_url, u.bio,
-             COUNT(DISTINCT p.post_id) as posts_count,
-             COUNT(DISTINCT f.friendship_id) as friends_count
-      FROM users u
-      LEFT JOIN posts p ON u.user_id = p.user_id AND p.is_published = TRUE
-      LEFT JOIN friendships f ON (u.user_id = f.user_id1 OR u.user_id = f.user_id2) AND f.status = 'accepted'
-      WHERE u.user_id = ?
-      GROUP BY u.user_id
-    `, [userId]);
+  SELECT u.user_id, u.name, u.surname, u.nick, u.email, u.role, u.created_at, u.is_online, u.last_seen, u.avatar_url, u.bio,
+         COUNT(DISTINCT p.post_id) as posts_count,
+         COUNT(DISTINCT f.friendship_id) as friends_count
+  FROM users u
+  LEFT JOIN posts p ON u.user_id = p.user_id AND p.is_published = TRUE
+  LEFT JOIN friendships f ON (u.user_id = f.user_id1 OR u.user_id = f.user_id2) AND f.status = 'accepted'
+  WHERE u.user_id = ?
+  GROUP BY u.user_id
+`, [userId]);
 
     if (users.length === 0) {
       return res.status(404).json({ error: 'Пользователь не найден' });

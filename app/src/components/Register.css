@@ -1,0 +1,775 @@
+html, body {
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    font-family: 'Arial', sans-serif;
+}
+
+.register-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+  background-color: #f5f5f5;
+  padding: 20px;
+  position: relative; 
+  z-index: 1; 
+}
+
+.register-form {
+  position: relative;
+  z-index: 10; 
+  padding: 30px;
+  border-radius: 10px;
+  width: 100%;
+  max-width: 400px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-top: 100px;
+  animation: fadeInUp 0.5s ease-out;
+}
+
+.form-registration {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  position: relative;
+  z-index: 10; 
+}
+
+.form-group {
+  width: 100%;
+  margin-bottom: 20px;
+  text-align: center;
+  position: relative;
+  z-index: 10; 
+}
+
+.sphere-1 {
+    position: absolute;
+    height: 1200px;
+    width: 1200px;
+    border-radius: 50%;
+    background-color: #2D2A3C;
+    z-index: 3;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+}
+
+.sphere-2 {
+    position: absolute;
+    height: 1500px;
+    width: 1500px;
+    border-radius: 50%;
+    background-color: #D3D3D3;
+    z-index: 2;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+}
+
+.sphere-3 {
+    position: absolute;
+    height: 1800px;
+    width: 1800px;
+    border-radius: 50%;
+    background-color: #F3F3F3;
+    z-index: 1;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+}
+
+/* Оранжевая сфера в верхнем левом углу */
+.header-sphere {
+  position: absolute;
+  top: -150px;
+  left: -150px;
+  width: 500px;
+  height: 500px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #FFA705, #ff8c00);
+  z-index: 5;
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-start;
+  box-shadow: 0 4px 30px rgba(255, 167, 5, 0.4);
+  border: 8px solid rgba(255, 255, 255, 0.1);
+}
+
+.header-content {
+  position: relative;
+  top: 140px;
+  left: 140px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.back-button {
+  background: transparent;
+  border: none;
+  color: white;
+  font-size: 16px;
+  cursor: pointer;
+  padding: 8px 0;
+  font-weight: 500;
+  transition: all 0.3s ease;
+  text-align: left;
+}
+
+.back-button:hover {
+  transform: translateX(-5px);
+  opacity: 0.9;
+}
+
+.register-title {
+  font-size: 32px;
+  font-weight: bold;
+  color: white;
+  margin: 0;
+  text-shadow: 2px 2px 8px rgba(0, 0, 0, 0.3);
+  line-height: 1.2;
+}
+
+.form-group .inputlol {
+  width: 100%;
+  max-width: 400px;
+  height: 50px;
+  padding: 12px 20px;
+  background-color: #474453;
+  border: none;
+  border-radius: 40px;
+  font-size: 16px;
+  box-sizing: border-box;
+  position: relative;
+  z-index: 10;
+  color: white;
+  margin: 0 auto;
+  border: 2px solid transparent;
+  transition: all 0.3s ease;
+}
+
+.form-group .inputlol::placeholder {
+  color: #cccccc;
+}
+
+.form-group .inputlol:focus {
+  outline: none;
+  border-color: #FFA705;
+  box-shadow: 0 0 8px rgba(255, 167, 5, 0.3);
+}
+
+.register-button {
+  width: 100%;
+  max-width: 400px;
+  padding: 15px;
+  background-color: #FFA705;
+  color: white;
+  border: none;
+  border-radius: 40px;
+  font-size: 16px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  margin-top: 15px;
+  position: relative;
+  z-index: 10; 
+  font-weight: 600;
+}
+
+.register-button:hover:not(:disabled) {
+  background-color: #e69500;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(255, 167, 5, 0.4);
+}
+
+.register-button:disabled {
+  background-color: #6c757d;
+  cursor: not-allowed;
+  opacity: 0.6;
+  transform: none;
+}
+
+.error-message {
+  color: #dc3545;
+  background-color: #f8d7da;
+  border: 1px solid #f5c6cb;
+  padding: 12px;
+  border-radius: 8px;
+  margin: 15px 0;
+  width: 100%;
+  box-sizing: border-box;
+  position: relative;
+  z-index: 10;
+  text-align: center;
+  font-size: 14px;
+}
+
+.switch-auth {
+  margin-top: 20px;
+  color: white;
+  position: relative;
+  z-index: 10;
+  text-align: center;
+}
+
+.switch-link {
+  color: #FFA705;
+  cursor: pointer;
+  margin-left: 5px;
+  text-decoration: underline;
+  font-weight: 500;
+  transition: color 0.3s ease;
+}
+
+.switch-link:hover {
+  color: #e69500;
+}
+
+p {
+  color: white;
+  line-height: 1.5;
+  margin-bottom: 15px;
+  position: relative;
+  z-index: 10;
+  text-align: center;
+}
+
+/* Стили для галочки согласия */
+.terms-group {
+  width: 100%;
+  max-width: 400px;
+  margin: 10px 0 20px 0;
+  text-align: left;
+  position: relative;
+  z-index: 10;
+}
+
+.terms-label {
+  display: flex;
+  align-items: flex-start;
+  cursor: pointer;
+  font-size: 14px;
+  color: white;
+  position: relative;
+  line-height: 1.4;
+}
+
+.terms-checkbox {
+  display: none;
+}
+
+.checkmark {
+  width: 20px;
+  height: 20px;
+  border: 2px solid white;
+  border-radius: 4px;
+  margin-right: 10px;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.3s ease;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.terms-checkbox:checked + .checkmark {
+  background-color: #FFA705;
+  border-color: #FFA705;
+}
+
+.terms-checkbox:checked + .checkmark::after {
+  content: '✓';
+  color: white;
+  font-size: 14px;
+  font-weight: bold;
+}
+
+.terms-label:hover .checkmark {
+  border-color: #FFA705;
+}
+
+/* Стили для формы подтверждения */
+.confirmation-form {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  position: relative;
+  z-index: 10;
+}
+
+.confirmation-message {
+  color: white;
+  text-align: center;
+  margin-bottom: 25px;
+  line-height: 1.5;
+  font-size: 16px;
+  position: relative;
+  z-index: 10;
+}
+
+.confirmation-email {
+  color: #FFA705;
+  font-weight: bold;
+  background: rgba(255, 167, 5, 0.1);
+  padding: 4px 8px;
+  border-radius: 6px;
+  display: inline-block;
+  margin: 5px 0;
+}
+
+/* Стили для поля ввода кода подтверждения */
+.confirmation-input-group {
+  width: 100%;
+  margin-bottom: 25px;
+  text-align: center;
+  position: relative;
+  z-index: 10;
+}
+
+.confirmation-input {
+  width: 100%;
+  max-width: 400px;
+  height: 50px;
+  padding: 12px 20px;
+  background-color: #474453;
+  border: none;
+  border-radius: 40px;
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: 2px;
+  box-sizing: border-box;
+  position: relative;
+  z-index: 10;
+  color: white;
+  margin: 0 auto;
+  border: 2px solid transparent;
+  transition: all 0.3s ease;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.confirmation-input::placeholder {
+  color: #cccccc;
+  letter-spacing: normal;
+  font-size: 16px;
+  font-weight: normal;
+  text-transform: none;
+}
+
+.confirmation-input:focus {
+  outline: none;
+  border-color: #FFA705;
+  box-shadow: 0 0 12px rgba(255, 167, 5, 0.4);
+  background-color: #4f4b5a;
+}
+
+.confirmation-input:hover {
+  background-color: #4f4b5a;
+}
+
+/* Стили для кнопки подтверждения */
+.confirm-button {
+  width: 100%;
+  max-width: 400px;
+  padding: 15px;
+  background: linear-gradient(135deg, #FFA705, #ff8c00);
+  color: white;
+  border: none;
+  border-radius: 40px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  margin-top: 10px;
+  position: relative;
+  z-index: 10;
+  box-shadow: 0 4px 15px rgba(255, 167, 5, 0.3);
+}
+
+.confirm-button:hover:not(:disabled) {
+  background: linear-gradient(135deg, #e69500, #e67e00);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(255, 167, 5, 0.5);
+}
+
+.confirm-button:active:not(:disabled) {
+  transform: translateY(0);
+  box-shadow: 0 2px 10px rgba(255, 167, 5, 0.4);
+}
+
+.confirm-button:disabled {
+  background: #6c757d;
+  cursor: not-allowed;
+  opacity: 0.6;
+  transform: none;
+  box-shadow: none;
+}
+
+/* Стили для ссылки возврата */
+.confirmation-switch {
+  margin-top: 25px;
+  color: white;
+  position: relative;
+  z-index: 10;
+  text-align: center;
+  font-size: 15px;
+}
+
+.confirmation-link {
+  color: #FFA705;
+  cursor: pointer;
+  margin-left: 5px;
+  font-weight: 500;
+  transition: all 0.3s ease;
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+}
+
+.confirmation-link:hover {
+  color: #e69500;
+  border-bottom-color: #e69500;
+}
+
+/* Анимация появления формы */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Адаптивность для мобильных устройств */
+@media (max-width: 768px) {
+  .register-container {
+    padding: 15px;
+    min-height: 100vh;
+    overflow-y: auto;
+  }
+  
+  .header-sphere {
+    top: -100px;
+    left: -100px;
+    width: 350px;
+    height: 350px;
+  }
+  
+  .header-content {
+    top: 100px;
+    left: 100px;
+  }
+  
+  .register-title {
+    font-size: 24px;
+  }
+  
+  .back-button {
+    font-size: 14px;
+  }
+  
+  .register-form {
+    margin-top: 80px;
+    padding: 20px 15px;
+    max-width: 100%;
+  }
+  
+  .form-group .inputlol {
+    height: 45px;
+    font-size: 15px;
+    padding: 10px 16px;
+  }
+  
+  .register-button {
+    padding: 13px;
+    font-size: 15px;
+  }
+  
+  .sphere-1,
+  .sphere-2,
+  .sphere-3 {
+    display: none; /* Скрываем большие сферы на мобильных */
+  }
+  
+  .register-container {
+    background: linear-gradient(135deg, #2D2A3C, #474453);
+  }
+  
+  .confirmation-message {
+    font-size: 15px;
+    margin-bottom: 20px;
+  }
+  
+  .confirmation-input {
+    height: 45px;
+    font-size: 16px;
+    padding: 10px 16px;
+    letter-spacing: 1px;
+  }
+  
+  .confirmation-input::placeholder {
+    font-size: 14px;
+  }
+  
+  .confirm-button {
+    padding: 13px;
+    font-size: 15px;
+  }
+  
+  .confirmation-switch {
+    margin-top: 20px;
+    font-size: 14px;
+  }
+}
+
+@media (max-width: 480px) {
+  .register-container {
+    padding: 10px;
+  }
+  
+  .header-sphere {
+    top: -70px;
+    left: -70px;
+    width: 280px;
+    height: 280px;
+    border: 5px solid rgba(255, 255, 255, 0.1);
+  }
+  
+  .header-content {
+    top: 80px;
+    left: 80px;
+    gap: 8px;
+  }
+  
+  .register-title {
+    font-size: 20px;
+  }
+  
+  .back-button {
+    font-size: 13px;
+    padding: 6px 0;
+  }
+  
+  .register-form {
+    margin-top: 70px;
+    padding: 15px 10px;
+  }
+  
+  .form-group {
+    margin-bottom: 15px;
+  }
+
+
+  
+  .form-group .inputlol {
+    height: 42px;
+    font-size: 14px;
+    padding: 8px 14px;
+  }
+  
+  .register-button {
+    padding: 12px;
+    font-size: 14px;
+    margin-top: 10px;
+  }
+  
+  .terms-label {
+    font-size: 13px;
+    line-height: 1.3;
+  }
+  
+  .checkmark {
+    width: 18px;
+    height: 18px;
+    margin-right: 8px;
+  }
+  
+  .error-message {
+    padding: 10px;
+    font-size: 13px;
+    margin: 10px 0;
+  }
+  
+  .switch-auth {
+    margin-top: 15px;
+    font-size: 14px;
+  }
+  
+  p {
+    font-size: 14px;
+    margin-bottom: 12px;
+  }
+  
+  .confirmation-message {
+    font-size: 14px;
+    margin-bottom: 18px;
+  }
+  
+  .confirmation-input {
+    height: 42px;
+    font-size: 15px;
+    padding: 8px 14px;
+  }
+  
+  .confirmation-input::placeholder {
+    font-size: 13px;
+  }
+  
+  .confirm-button {
+    padding: 12px;
+    font-size: 14px;
+  }
+  
+  .confirmation-switch {
+    margin-top: 18px;
+    font-size: 13px;
+  }
+  
+  .confirmation-email {
+    font-size: 13px;
+    padding: 3px 6px;
+  }
+}
+
+/* Стили для контейнера с полями ввода кода */
+.code-inputs-container {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  margin-bottom: 25px;
+  width: 100%;
+  max-width: 400px;
+  position: relative;
+  z-index: 10;
+}
+
+/* Стили для отдельных полей ввода кода */
+.code-input {
+  width: 50px;
+  height: 60px;
+  background-color: #474453;
+  border: 2px solid transparent;
+  border-radius: 12px;
+  font-size: 24px;
+  font-weight: bold;
+  text-align: center;
+  color: white;
+  transition: all 0.3s ease;
+  outline: none;
+  box-sizing: border-box;
+}
+
+.code-input:focus {
+  border-color: #FFA705;
+  background-color: #4f4b5a;
+  box-shadow: 0 0 12px rgba(255, 167, 5, 0.4);
+  transform: translateY(-2px);
+}
+
+.code-input:hover {
+  background-color: #4f4b5a;
+}
+
+.code-input::placeholder {
+  color: #cccccc;
+  font-size: 16px;
+}
+
+/* Адаптивность для полей ввода кода */
+@media (max-width: 768px) {
+  .code-inputs-container {
+    gap: 10px;
+    max-width: 350px;
+  }
+  
+  .code-input {
+    width: 45px;
+    height: 55px;
+    font-size: 22px;
+    border-radius: 10px;
+  }
+}
+
+@media (max-width: 480px) {
+  .code-inputs-container {
+    gap: 8px;
+    max-width: 300px;
+  }
+  
+  .code-input {
+    width: 40px;
+    height: 50px;
+    font-size: 20px;
+    border-radius: 8px;
+  }
+}
+
+@media (max-width: 360px) {
+  .code-inputs-container {
+    gap: 6px;
+    max-width: 280px;
+  }
+  
+  .code-input {
+    width: 38px;
+    height: 48px;
+    font-size: 18px;
+    border-radius: 6px;
+  }
+}
+
+@media (max-width: 360px) {
+  .header-sphere {
+    top: -60px;
+    left: -60px;
+    width: 240px;
+    height: 240px;
+  }
+  
+  .header-content {
+    top: 70px;
+    left: 70px;
+  }
+  
+  .register-title {
+    font-size: 18px;
+  }
+  
+  .back-button {
+    font-size: 12px;
+  }
+  
+  .register-form {
+    margin-top: 60px;
+  }
+  
+  .form-group .inputlol {
+    height: 40px;
+    font-size: 13px;
+  }
+  
+  .terms-label {
+    font-size: 12px;
+  }
+  
+  .confirmation-message {
+    font-size: 13px;
+  }
+  
+  .confirmation-input {
+    height: 40px;
+    font-size: 14px;
+  }
+  
+  .confirmation-input::placeholder {
+    font-size: 12px;
+  }
+}
