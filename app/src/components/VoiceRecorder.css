@@ -1,0 +1,204 @@
+.voice-recorder-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+}
+
+.voice-recorder-container {
+  background: white;
+  border-radius: 15px;
+  padding: 20px;
+  width: 90%;
+  max-width: 400px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+}
+
+.voice-recorder-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  padding-bottom: 15px;
+  border-bottom: 1px solid #eee;
+}
+
+.voice-recorder-header h3 {
+  margin: 0;
+  color: #333;
+  font-size: 18px;
+}
+
+.close-button {
+  background: none;
+  border: none;
+  font-size: 24px;
+  cursor: pointer;
+  color: #666;
+  padding: 0;
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+}
+
+.close-button:hover {
+  background: #f5f5f5;
+  color: #333;
+}
+
+.recording-section,
+.playback-section {
+  text-align: center;
+}
+
+.recording-visualization {
+  height: 60px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.sound-waves {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  height: 40px;
+}
+
+.sound-bar {
+  width: 4px;
+  background: #ff4757;
+  border-radius: 2px;
+  animation: soundWave 1s infinite ease-in-out;
+}
+
+.sound-bar:nth-child(1) { height: 10px; }
+.sound-bar:nth-child(2) { height: 20px; }
+.sound-bar:nth-child(3) { height: 30px; }
+.sound-bar:nth-child(4) { height: 20px; }
+.sound-bar:nth-child(5) { height: 10px; }
+
+@keyframes soundWave {
+  0%, 100% { transform: scaleY(1); }
+  50% { transform: scaleY(1.5); }
+}
+
+.recording-time {
+  font-size: 32px;
+  font-weight: bold;
+  color: #ff4757;
+  margin-bottom: 20px;
+  font-family: 'Courier New', monospace;
+}
+
+.recording-controls {
+  margin-bottom: 15px;
+}
+
+.record-button {
+  padding: 12px 24px;
+  border: none;
+  border-radius: 25px;
+  font-size: 16px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 auto;
+  transition: all 0.3s ease;
+  font-weight: 600;
+}
+
+.record-button.start {
+  background: #ff4757;
+  color: white;
+}
+
+.record-button.stop {
+  background: #2ed573;
+  color: white;
+}
+
+.record-button:hover {
+  transform: scale(1.05);
+}
+
+.record-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.record-icon {
+  font-size: 20px;
+  color: #ff4757;
+  background: white;
+  border-radius: 50%;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.stop-icon {
+  font-size: 16px;
+}
+
+.recording-hint {
+  color: #666;
+  font-size: 14px;
+  margin-top: 10px;
+}
+
+.voice-playback {
+  width: 100%;
+  margin-bottom: 20px;
+  border-radius: 8px;
+}
+
+.playback-controls {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+}
+
+.control-button {
+  padding: 10px 20px;
+  border: none;
+  border-radius: 20px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.3s ease;
+  font-weight: 600;
+}
+
+.control-button.retry {
+  background: #f1f2f6;
+  color: #333;
+}
+
+.control-button.send {
+  background: #3742fa;
+  color: white;
+}
+
+.control-button:hover {
+  transform: scale(1.05);
+}
+
+.control-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}

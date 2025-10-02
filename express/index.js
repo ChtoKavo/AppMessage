@@ -28,6 +28,113 @@ const transporter = nodemailer.createTransport({
 
 
 
+// ===========================Голосовые сообщения ============================
+
+const audioDir = path.join(__dirname, 'uploads/audio');
+
+// ИСПРАВЛЕННАЯ ПРОВЕРКА СУЩЕСТВОВАНИЯ ПАПКИ
+if (!fs.existsSync(audioDir)) {
+  fs.mkdirSync(audioDir, { recursive: true });
+  console.log('Папка для аудио создана:', audioDir);
+}
+
+const audioStorage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    cb(null, 'uploads/audio/')
+  },
+  filename: function (req, file, cb) {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    cb(null, 'voice-' + uniqueSuffix + '.webm'); 
+  }
+});
+
+const uploadAudio = multer ({
+  storage: audioStorage,
+  limits: {
+    fileSize: 10 * 1024 * 1024 // 10MB
+  },
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype.startsWith('audio/')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Разрешены только аудио файлы!'), false);
+    }
+  }
+});
+
+app.post('/messages/upload-voice', uploadAudio.single('audio'), async (req, res) => {
+  try {
+    // Добавьте CORS заголовки в ответ
+    res.header('Access-Control-Allow-Origin', 'http://localhost:5173');
+    res.header('Access-Control-Allow-Credentials', 'true');
+
+    const { chat_id, user_id, duration } = req.body;
+    
+    console.log('Voice message upload:', {
+      chat_id,
+      user_id,
+      duration,
+      file: req.file ? {
+        originalname: req.file.originalname,
+        mimetype: req.file.mimetype,
+        size: req.file.size,
+        filename: req.file.filename
+      } : 'No file'
+    });
+
+    if (!req.file) {
+      return res.status(400).json({ error: 'Аудио файл не загружен' });
+    }
+
+    if (!chat_id || !user_id) {
+      return res.status(400).json({ error: 'chat_id и user_id обязательны' });
+    }
+
+    const attachment_url = `/uploads/audio/${req.file.filename}`;
+
+    const [result] = await db.execute(
+      'INSERT INTO messages (chat_id, user_id, content, message_type, attachment_url, duration) VALUES (?, ?, ?, ?, ?, ?)',
+      [chat_id, user_id, 'Голосовое сообщение', 'voice', attachment_url, duration || 0]
+    );
+
+    const [messages] = await db.execute(`
+      SELECT m.*, u.name as user_name, u.email as user_email 
+      FROM messages m 
+      JOIN users u ON m.user_id = u.user_id 
+      WHERE m.message_id = ?
+    `, [result.insertId]);
+
+    const fullMessage = messages[0];
+
+    const [participants] = await db.execute(
+      'SELECT user_id FROM chat_participants WHERE chat_id = ?',
+      [chat_id]
+    );
+
+    participants.forEach(participant => {
+      const participantSocketId = activeUsers.get(participant.user_id.toString());
+      if (participantSocketId) {
+        io.to(participantSocketId).emit('new_message', fullMessage);
+      }
+    });
+
+    await db.execute(
+      'UPDATE chats SET last_activity = NOW() WHERE chat_id = ?',
+      [chat_id]
+    );
+
+    res.json({
+      message: 'Голосовое сообщение успешно отправлено',
+      uploadedMessage: fullMessage
+    });
+
+  } catch (error) {
+    console.error('Ошибка загрузки голосового сообщения:', error);
+    res.status(500).json({ error: 'Ошибка загрузки голосового сообщения: ' + error.message });
+  }
+});
+
+// ===========================Голосовые сообщения ========================
 
 const io = socketIo(server, {
   cors: {
@@ -38,11 +145,32 @@ const io = socketIo(server, {
 
 // Middleware
 app.use(cors({
-  origin: ["http://localhost:5173", "http://localhost:5173"],
+  origin: "http://localhost:5173",
   credentials: true,
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization"]
+  allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"]
 }));
+
+// app.options('*', cors({
+//   origin: "http://localhost:5173",
+//   credentials: true,
+//   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+//   allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"]
+// }));
+
+
+app.use('/messages/upload-voice', (req, res, next) => {
+  res.header('Access-Control-Allow-Origin', 'http://localhost:5173');
+  res.header('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+  res.header('Access-Control-Allow-Credentials', 'true');
+  
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(200);
+  }
+  next();
+});
+
 
 app.use(cors({
   origin: ["http://localhost:5173", "http://localhost:5173"],
@@ -50,6 +178,8 @@ app.use(cors({
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"]
 }));
+
+
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
@@ -132,7 +262,7 @@ const avatarStorage = multer.diskStorage({
 const uploadAvatar = multer({ 
   storage: avatarStorage,
   limits: {
-    fileSize: 5 * 1024 * 1024 // 5MB limit for avatars
+    fileSize: 5 * 1024 * 1024 
   },
   fileFilter: (req, file, cb) => {
     if (file.mimetype.startsWith('image/')) {
@@ -686,6 +816,171 @@ app.post('/api/users/status', async (req, res) => {
   }
 });
 
+app.post('/users/check-email', async (req, res) => {
+  try {
+    const { email } = req.body;
+    
+    if (!email) {
+      return res.status(400).json({ error: 'Email обязателен' });
+    }
+
+    const [users] = await db.execute('SELECT * FROM users WHERE email = ?', [email]);
+    
+    res.json({ 
+      exists: users.length > 0,
+      is_confirmed: users.length > 0 ? users[0].is_confirmed : false
+    });
+
+  } catch (error) {
+    console.error('Ошибка проверки email:', error);
+    res.status(500).json({ error: 'Внутренняя ошибка сервера' });
+  }
+});
+
+app.post('/resend-confirmation', async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({ error: 'Email обязателен' });
+    }
+
+    // Проверяем существование пользователя
+    const [users] = await db.execute('SELECT * FROM users WHERE email = ?', [email]);
+    
+    if (users.length === 0) {
+      return res.status(404).json({ error: 'Пользователь не найден' });
+    }
+
+    const user = users[0];
+
+    // Если пользователь уже подтвержден
+    if (user.is_confirmed) {
+      return res.status(400).json({ error: 'Email уже подтвержден' });
+    }
+
+    // Генерируем новый код подтверждения
+    const confirmationCode = Math.floor(100000 + Math.random() * 900000).toString();
+
+    // Обновляем код подтверждения в базе
+    await db.execute(
+      'UPDATE users SET confirmation_code = ?, updated_at = NOW() WHERE email = ?',
+      [confirmationCode, email]
+    );
+
+    // Отправляем email с новым кодом подтверждения
+    const mailOptions = {
+      from: 'Yra222225522@gmail.com',
+      to: email,
+      subject: 'Новый код подтверждения регистрации',
+      html: `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="utf-8">
+          <style>
+            body { 
+              font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+              background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+              margin: 0;
+              padding: 20px;
+              min-height: 100vh;
+            }
+            .container {
+              max-width: 500px;
+              margin: 0 auto;
+              background: white;
+              border-radius: 15px;
+              overflow: hidden;
+              box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            }
+            .header {
+              background: #8a9bd4ff;
+              color: white;
+              padding: 30px;
+              text-align: center;
+            }
+            .content {
+              padding: 40px 30px;
+            }
+            .code-container {
+              background: #f8f9ff;
+              border-radius: 12px;
+              padding: 25px;
+              margin: 25px 0;
+              text-align: center;
+              border: 1px solid #e1e5ff;
+            }
+            .code {
+              font-size: 42px;
+              font-weight: 800;
+              color: #ffa705;
+              letter-spacing: 8px;
+              margin: 10px 0;
+            }
+            .note {
+              background: #fff9e6;
+              border-left: 4px solid #ffc107;
+              padding: 15px;
+              margin: 20px 0;
+              border-radius: 4px;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <h1 style="margin: 0; font-size: 28px;">Новый код для входа в Chill Out</h1>
+              <p style="margin: 10px 0 0 0; opacity: 0.9;">Ваш новый код доступа</p>
+            </div>
+            
+            <div class="content">
+              <p>Здравствуйте!</p>
+              <p>Вы запросили новый код подтверждения. Для завершения регистрации введите следующий код:</p>
+              
+              <div class="code-container">
+                <div class="code">${confirmationCode}</div>
+                <p style="color: #666; margin: 5px 0;">Новый код подтверждения</p>
+              </div>
+              
+              <div class="note">
+                <strong>Важно:</strong> Никому не сообщайте этот код. 
+                Срок действия кода — 10 минут.
+              </div>
+              
+              <p style="color: #888; font-size: 14px; text-align: center;">
+                Если вы не запрашивали новый код, пожалуйста, проигнорируйте это письмо.
+              </p>
+            </div>
+          </div>
+        </body>
+        </html>
+      `
+    };
+
+    await new Promise((resolve, reject) => {
+      transporter.sendMail(mailOptions, (error, info) => {
+        if (error) {
+          console.error('Ошибка отправки email:', error);
+          reject(error);
+        } else {
+          console.log('Новый код отправлен:', info.response);
+          console.log('Новый код:' + confirmationCode);
+          resolve(info);
+        }
+      });
+    });
+
+    res.status(200).json({ 
+      message: 'Новый код подтверждения отправлен на ваш email.',
+      email: email
+    });
+
+  } catch (error) {
+    console.error('Ошибка повторной отправки кода:', error);
+    res.status(500).json({ error: 'Внутренняя ошибка сервера' });
+  }
+});
 
 app.post('/users', async (req, res) => {
   try {
@@ -723,11 +1018,107 @@ app.post('/users', async (req, res) => {
 
     // Отправляем email с кодом подтверждения
     const mailOptions = {
-      from: 'Yra222225522@gmail.com',
-      to: email,
-      subject: 'Код подтверждения регистрации',
-      text: `Ваш код подтверждения: ${confirmationCode}`
-    };
+  from: 'Yra222225522@gmail.com',
+  to: email,
+  subject: 'Код подтверждения регистрации',
+  html: `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="utf-8">
+      <style>
+        body { 
+          font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+          margin: 0;
+          padding: 20px;
+          min-height: 100vh;
+        }
+        .container {
+          max-width: 500px;
+          margin: 0 auto;
+          background: white;
+          border-radius: 15px;
+          overflow: hidden;
+          box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+        .header {
+          background: #8a9bd4ff;
+          color: white;
+          padding: 30px;
+          text-align: center;
+        }
+        .content {
+          padding: 40px 30px;
+        }
+        .code-container {
+          background: #f8f9ff;
+          border-radius: 12px;
+          padding: 25px;
+          margin: 25px 0;
+          text-align: center;
+          border: 1px solid #e1e5ff;
+        }
+        .code {
+          font-size: 42px;
+          font-weight: 800;
+          color: #ffa705;
+          letter-spacing: 8px;
+          margin: 10px 0;
+        }
+        .note {
+          background: #fff9e6;
+          border-left: 4px solid #ffc107;
+          padding: 15px;
+          margin: 20px 0;
+          border-radius: 4px;
+        }
+        .button {
+          display: inline-block;
+          background-color: #ffa705;
+          color: white;
+          padding: 12px 30px;
+          text-decoration: none;
+          border-radius: 25px;
+          margin: 10px 0;
+          font-weight: 600;
+        }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="header">
+          <h1 style="margin: 0; font-size: 28px;">Код для входа в Chill Out</h1>
+          <p style="margin: 10px 0 0 0; opacity: 0.9;">Ваш код доступа</p>
+        </div>
+        
+        <div class="content">
+          <p>Здравствуйте! </p>
+          <p>Для завершения регистрации введите следующий код подтверждения:</p>
+          
+          <div class="code-container">
+            <div class="code">${confirmationCode}</div>
+            <p style="color: #666; margin: 5px 0;">Код подтверждения</p>
+          </div>
+          
+          <div class="note">
+            <strong> Важно:</strong> Никому не сообщайте этот код. 
+            Срок действия кода — 10 минут.
+          </div>
+          
+          <p style="text-align: center;">
+            <span class="button">Использовать код</span>
+          </p>
+          
+          <p style="color: #888; font-size: 14px; text-align: center;">
+            Если вы не запрашивали регистрацию, пожалуйста, проигнорируйте это письмо.
+          </p>
+        </div>
+      </div>
+    </body>
+    </html>
+  `
+};
 
     // Оборачиваем отправку email в Promise для асинхронной обработки
     await new Promise((resolve, reject) => {

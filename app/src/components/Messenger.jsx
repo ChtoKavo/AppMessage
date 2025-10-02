@@ -1,6 +1,7 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import io from 'socket.io-client';
 import './Messenger.css';
+import VoiceRecorder from './VoiceRecorder';
 
 const Messenger = ({ currentUser }) => {
   const [socket, setSocket] = useState(null);
@@ -16,28 +17,27 @@ const Messenger = ({ currentUser }) => {
   const [error, setError] = useState('');
   const [onlineUsers, setOnlineUsers] = useState(new Set());
   const [userStatuses, setUserStatuses] = useState({});
-  const [userAvatars, setUserAvatars] = useState({});
-  const [uploadingFile, setUploadingFile] = useState(false);
   const [selectedFile, setSelectedFile] = useState(null);
   const [filePreview, setFilePreview] = useState(null);
-
+  const [uploadingFile, setUploadingFile] = useState(false);
+  const [showVoiceRecorder, setShowVoiceRecorder] = useState(false);
+  
   const messagesEndRef = useRef(null);
   const messageInputRef = useRef(null);
   const fileInputRef = useRef(null);
 
   const API_BASE_URL = 'http://localhost:5001';
 
-  // Инициализация WebSocket
+  // Инициализация WebSocket соединения
   useEffect(() => {
+    if (!currentUser) return;
+
     const newSocket = io(API_BASE_URL, {
       transports: ['websocket', 'polling']
     });
     
     setSocket(newSocket);
-
-    if (currentUser) {
-      newSocket.emit('register_user', currentUser.user_id.toString());
-    }
+    newSocket.emit('register_user', currentUser.user_id.toString());
 
     return () => {
       newSocket.close();
@@ -73,13 +73,8 @@ const Messenger = ({ currentUser }) => {
       setUploadingFile(false);
     };
 
-    // Обработчики онлайн статуса
     const handleUserOnline = (userId) => {
       setOnlineUsers(prev => new Set([...prev, userId]));
-      setUserStatuses(prev => ({
-        ...prev,
-        [userId]: { is_online: true, last_seen: new Date().toISOString() }
-      }));
     };
 
     const handleUserOffline = (userId) => {
@@ -88,25 +83,10 @@ const Messenger = ({ currentUser }) => {
         newSet.delete(userId);
         return newSet;
       });
-      setUserStatuses(prev => ({
-        ...prev,
-        [userId]: { 
-          is_online: false, 
-          last_seen: new Date().toISOString() 
-        }
-      }));
     };
 
     const handleOnlineUsersList = (userIds) => {
       setOnlineUsers(new Set(userIds));
-    };
-
-    const handleUserStatusUpdate = (statuses) => {
-      const newStatuses = {};
-      statuses.forEach(status => {
-        newStatuses[status.user_id] = status;
-      });
-      setUserStatuses(prev => ({ ...prev, ...newStatuses }));
     };
 
     socket.on('new_message', handleNewMessage);
@@ -115,7 +95,6 @@ const Messenger = ({ currentUser }) => {
     socket.on('user_online', handleUserOnline);
     socket.on('user_offline', handleUserOffline);
     socket.on('online_users_list', handleOnlineUsersList);
-    socket.on('user_status_update', handleUserStatusUpdate);
 
     return () => {
       socket.off('new_message', handleNewMessage);
@@ -124,11 +103,10 @@ const Messenger = ({ currentUser }) => {
       socket.off('user_online', handleUserOnline);
       socket.off('user_offline', handleUserOffline);
       socket.off('online_users_list', handleOnlineUsersList);
-      socket.off('user_status_update', handleUserStatusUpdate);
     };
   }, [socket, activeChat, currentUser]);
 
-  // Загрузка чатов при изменении пользователя
+  // Загрузка чатов
   useEffect(() => {
     if (currentUser) {
       loadChats();
@@ -176,7 +154,6 @@ const Messenger = ({ currentUser }) => {
     }
   };
 
-  // Функция поиска пользователей
   const searchUsers = async (query) => {
     if (!query.trim()) {
       setUsers([]);
@@ -189,7 +166,6 @@ const Messenger = ({ currentUser }) => {
       if (!response.ok) throw new Error('Ошибка поиска пользователей');
       const data = await response.json();
       
-      // Фильтруем текущего пользователя из результатов
       const filteredUsers = data.filter(user => user.user_id !== currentUser.user_id);
       setUsers(filteredUsers);
     } catch (error) {
@@ -200,12 +176,10 @@ const Messenger = ({ currentUser }) => {
     }
   };
 
-  // Функция создания чата
   const createChat = async (participantId) => {
     try {
       setLoading(true);
       
-      // Сначала проверяем, существует ли уже чат
       const checkResponse = await fetch(
         `${API_BASE_URL}/chats/check/${currentUser.user_id}/${participantId}`
       );
@@ -215,14 +189,12 @@ const Messenger = ({ currentUser }) => {
       const checkData = await checkResponse.json();
       
       if (checkData.exists) {
-        // Если чат существует, активируем его
         setActiveChat({ chat_id: checkData.chat_id });
         loadMessages(checkData.chat_id);
         setShowUserSearch(false);
         setSearchQuery('');
         setUsers([]);
       } else {
-        // Если чата нет, создаем новый через WebSocket
         socket.emit('create_chat', {
           user_id: currentUser.user_id,
           participant_id: participantId,
@@ -236,319 +208,207 @@ const Messenger = ({ currentUser }) => {
     }
   };
 
-const sendFile = async (file) => {
-  if (!activeChat || !socket || uploadingFile) return;
+  const sendFile = async (file) => {
+    if (!activeChat || !socket || uploadingFile) return;
 
-  try {
-    setUploadingFile(true);
-    setError('');
-    
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('chat_id', activeChat.chat_id);
-    formData.append('user_id', currentUser.user_id.toString());
-
-    const fileType = file.type.startsWith('image/') ? 'image' : 
-                    file.type.startsWith('video/') ? 'video' : 'file';
-    
-    const fileContent = getFileTypeText(file.type, file.name);
-
-    // Оптимистичное обновление UI
-    const tempMessage = {
-      message_id: Date.now(),
-      chat_id: activeChat.chat_id,
-      user_id: currentUser.user_id,
-      content: fileContent,
-      message_type: fileType,
-      attachment_url: URL.createObjectURL(file),
-      original_filename: file.name,
-      file_size: file.size,
-      file_type: file.type,
-      user_name: currentUser.name,
-      user_email: currentUser.email,
-      created_at: new Date().toISOString(),
-      is_own: true,
-      is_sending: true
-    };
-
-    setMessages(prev => [...prev, tempMessage]);
-
-    // Отправка файла на сервер
-    const response = await fetch(`${API_BASE_URL}/messages/upload`, {
-      method: 'POST',
-      body: formData
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      let errorMessage = `Ошибка загрузки файла: ${response.status}`;
+    try {
+      setUploadingFile(true);
+      setError('');
       
-      try {
-        const errorData = JSON.parse(errorText);
-        errorMessage = errorData.error || errorMessage;
-      } catch {
-        errorMessage = errorText || errorMessage;
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('chat_id', activeChat.chat_id);
+      formData.append('user_id', currentUser.user_id.toString());
+
+      const fileType = file.type.startsWith('image/') ? 'image' : 
+                      file.type.startsWith('video/') ? 'video' : 'file';
+      
+      const fileContent = getFileTypeText(file.type, file.name);
+
+      // Временное сообщение
+      const tempMessage = {
+        message_id: Date.now(),
+        chat_id: activeChat.chat_id,
+        user_id: currentUser.user_id,
+        content: fileContent,
+        message_type: fileType,
+        attachment_url: URL.createObjectURL(file),
+        original_filename: file.name,
+        file_size: file.size,
+        file_type: file.type,
+        user_name: currentUser.name,
+        user_email: currentUser.email,
+        created_at: new Date().toISOString(),
+        is_own: true,
+        is_sending: true
+      };
+
+      setMessages(prev => [...prev, tempMessage]);
+
+      const response = await fetch(`${API_BASE_URL}/messages/upload`, {
+        method: 'POST',
+        body: formData
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(errorText || `Ошибка загрузки файла: ${response.status}`);
       }
-      
-      throw new Error(errorMessage);
+
+      setMessages(prev => prev.filter(msg => !msg.is_sending));
+      setSelectedFile(null);
+      setFilePreview(null);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+
+    } catch (error) {
+      console.error('Ошибка отправки файла:', error);
+      setError('Ошибка отправки файла: ' + error.message);
+      setMessages(prev => prev.filter(msg => !msg.is_sending));
+      setTimeout(() => setError(''), 5000);
+    } finally {
+      setUploadingFile(false);
     }
-
-    const result = await response.json();
-    console.log('File upload response:', result);
-
-    // Удаляем временное сообщение
-    setMessages(prev => prev.filter(msg => !msg.is_sending));
-
-    // Очистка превью
-    setSelectedFile(null);
-    setFilePreview(null);
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
-    }
-
-  } catch (error) {
-    console.error('Ошибка отправки файла:', error);
-    setError('Ошибка отправки файла: ' + error.message);
-    
-    // Удаляем временное сообщение при ошибке
-    setMessages(prev => prev.filter(msg => !msg.is_sending));
-    
-    // Показываем ошибку на 5 секунд
-    setTimeout(() => setError(''), 5000);
-  } finally {
-    setUploadingFile(false);
-  }
-};
-
-  
- const handleFileSelect = (event) => {
-  const file = event.target.files[0];
-  if (!file) return;
-
-  // Проверка размера файла (50MB)
-  const maxSize = 50 * 1024 * 1024;
-  if (file.size > maxSize) {
-    setError(`Файл слишком большой (максимум ${maxSize / 1024 / 1024}MB)`);
-    event.target.value = ''; // Очищаем input
-    return;
-  }
-
-  // Проверка типа файла
-  const allowedTypes = [
-    'image/jpeg',
-    'image/jpg', 
-    'image/png',
-    'image/gif',
-    'image/webp',
-    'video/mp4',
-    'video/mpeg',
-    'video/ogg',
-    'video/webm',
-    'application/pdf',
-    'application/msword',
-    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-    'application/vnd.ms-excel',
-    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    'application/vnd.ms-powerpoint',
-    'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-    'application/zip',
-    'application/x-rar-compressed',
-    'text/plain',
-    'text/csv'
-  ];
-
-  if (!allowedTypes.includes(file.type)) {
-    setError('Неподдерживаемый тип файла');
-    event.target.value = ''; // Очищаем input
-    return;
-  }
-
-  setSelectedFile(file);
-  setError(''); // Очищаем предыдущие ошибки
-
-  // Создание превью
-  if (file.type.startsWith('image/')) {
-    const reader = new FileReader();
-    reader.onload = (e) => setFilePreview(e.target.result);
-    reader.readAsDataURL(file);
-  } else if (file.type.startsWith('video/')) {
-    const videoUrl = URL.createObjectURL(file);
-    setFilePreview(videoUrl);
-  } else {
-    setFilePreview(null);
-  }
-};
-
-// Функция для получения иконки файла по типу
-const getFileIcon = (fileType, fileName = '') => {
-  // Определяем тип файла по MIME type или расширению
-  if (fileType.startsWith('image/')) {
-    return '🖼️'; // Иконка для изображений
-  } else if (fileType.startsWith('video/')) {
-    return '🎬'; // Иконка для видео
-  } else if (fileType === 'application/pdf') {
-    return '📕'; // Иконка для PDF
-  } else if (
-    fileType === 'application/msword' ||
-    fileType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
-    fileName.toLowerCase().endsWith('.doc') ||
-    fileName.toLowerCase().endsWith('.docx')
-  ) {
-    return '📄'; // Иконка для Word
-  } else if (
-    fileType === 'application/vnd.ms-excel' ||
-    fileType === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
-    fileName.toLowerCase().endsWith('.xls') ||
-    fileName.toLowerCase().endsWith('.xlsx')
-  ) {
-    return '📊'; // Иконка для Excel
-  } else if (
-    fileType === 'application/vnd.ms-powerpoint' ||
-    fileType === 'application/vnd.openxmlformats-officedocument.presentationml.presentation' ||
-    fileName.toLowerCase().endsWith('.ppt') ||
-    fileName.toLowerCase().endsWith('.pptx')
-  ) {
-    return '📽️'; // Иконка для PowerPoint
-  } else if (
-    fileType === 'application/zip' ||
-    fileType === 'application/x-rar-compressed' ||
-    fileName.toLowerCase().endsWith('.zip') ||
-    fileName.toLowerCase().endsWith('.rar')
-  ) {
-    return '📦'; // Иконка для архивов
-  } else if (
-    fileType === 'text/plain' ||
-    fileName.toLowerCase().endsWith('.txt')
-  ) {
-    return '📝'; // Иконка для текстовых файлов
-  } else if (
-    fileType === 'text/csv' ||
-    fileName.toLowerCase().endsWith('.csv')
-  ) {
-    return '📋'; // Иконка для CSV
-  } else {
-    return '📎'; // Иконка по умолчанию
-  }
-};
-
-// Функция для получения человекочитаемого типа файла
-const getFileTypeText = (fileType, fileName = '') => {
-  if (fileType.startsWith('image/')) {
-    return 'Изображение';
-  } else if (fileType.startsWith('video/')) {
-    return 'Видео';
-  } else if (fileType === 'application/pdf') {
-    return 'PDF документ';
-  } else if (
-    fileType === 'application/msword' ||
-    fileType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-  ) {
-    return 'Документ Word';
-  } else if (
-    fileType === 'application/vnd.ms-excel' ||
-    fileType === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-  ) {
-    return 'Таблица Excel';
-  } else if (
-    fileType === 'application/vnd.ms-powerpoint' ||
-    fileType === 'application/vnd.openxmlformats-officedocument.presentationml.presentation'
-  ) {
-    return 'Презентация PowerPoint';
-  } else if (
-    fileType === 'application/zip' ||
-    fileType === 'application/x-rar-compressed'
-  ) {
-    return 'Архив';
-  } else if (fileType === 'text/plain') {
-    return 'Текстовый файл';
-  } else if (fileType === 'text/csv') {
-    return 'CSV файл';
-  } else {
-    // Пытаемся определить по расширению
-    const ext = fileName.split('.').pop()?.toLowerCase();
-    const extensionMap = {
-      'doc': 'Документ Word',
-      'docx': 'Документ Word',
-      'xls': 'Таблица Excel',
-      'xlsx': 'Таблица Excel',
-      'ppt': 'Презентация PowerPoint',
-      'pptx': 'Презентация PowerPoint',
-      'zip': 'Архив',
-      'rar': 'Архив',
-      'txt': 'Текстовый файл',
-      'csv': 'CSV файл'
-    };
-    return extensionMap[ext] || 'Файл';
-  }
-};
-
-  const sendMessage = async (e) => {
-  e.preventDefault();
-  
-  if (!newMessage.trim() || !activeChat || !socket || sending) return;
-
-  const messageData = {
-    chat_id: activeChat.chat_id,
-    user_id: currentUser.user_id,
-    content: newMessage.trim(),
-    message_type: 'text'
   };
 
-  try {
-    setSending(true);
+  const handleFileSelect = (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    const maxSize = 50 * 1024 * 1024;
+    if (file.size > maxSize) {
+      setError(`Файл слишком большой (максимум ${maxSize / 1024 / 1024}MB)`);
+      event.target.value = '';
+      return;
+    }
+
+    const allowedTypes = [
+      'image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp',
+      'video/mp4', 'video/mpeg', 'video/ogg', 'video/webm',
+      'application/pdf', 'application/msword', 
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'application/vnd.ms-excel',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'application/vnd.ms-powerpoint',
+      'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+      'application/zip', 'application/x-rar-compressed',
+      'text/plain', 'text/csv'
+    ];
+
+    if (!allowedTypes.includes(file.type)) {
+      setError('Неподдерживаемый тип файла');
+      event.target.value = '';
+      return;
+    }
+
+    setSelectedFile(file);
     setError('');
+
+    if (file.type.startsWith('image/')) {
+      const reader = new FileReader();
+      reader.onload = (e) => setFilePreview(e.target.result);
+      reader.readAsDataURL(file);
+    } else if (file.type.startsWith('video/')) {
+      const videoUrl = URL.createObjectURL(file);
+      setFilePreview(videoUrl);
+    } else {
+      setFilePreview(null);
+    }
+  };
+
+  const getFileIcon = (fileType, fileName = '') => {
+    if (fileType.startsWith('image/')) return '🖼️';
+    if (fileType.startsWith('video/')) return '🎬';
+    if (fileType === 'application/pdf') return '📕';
+    if (fileType.includes('word') || fileName.toLowerCase().endsWith('.doc') || fileName.toLowerCase().endsWith('.docx')) return '📄';
+    if (fileType.includes('excel') || fileName.toLowerCase().endsWith('.xls') || fileName.toLowerCase().endsWith('.xlsx')) return '📊';
+    if (fileType.includes('powerpoint') || fileName.toLowerCase().endsWith('.ppt') || fileName.toLowerCase().endsWith('.pptx')) return '📽️';
+    if (fileType.includes('zip') || fileType.includes('rar')) return '📦';
+    if (fileType.includes('text') || fileName.toLowerCase().endsWith('.txt')) return '📝';
+    if (fileType.includes('csv')) return '📋';
+    return '📎';
+  };
+
+  const getFileTypeText = (fileType, fileName = '') => {
+    if (fileType.startsWith('image/')) return 'Изображение';
+    if (fileType.startsWith('video/')) return 'Видео';
+    if (fileType === 'application/pdf') return 'PDF документ';
     
-    // Оптимистичное обновление UI
-    const tempMessage = {
-      message_id: Date.now(),
+    const ext = fileName.split('.').pop()?.toLowerCase();
+    const extensionMap = {
+      'doc': 'Документ Word', 'docx': 'Документ Word',
+      'xls': 'Таблица Excel', 'xlsx': 'Таблица Excel',
+      'ppt': 'Презентация', 'pptx': 'Презентация',
+      'zip': 'Архив', 'rar': 'Архив',
+      'txt': 'Текстовый файл', 'csv': 'CSV файл'
+    };
+    
+    return extensionMap[ext] || 'Файл';
+  };
+
+  const sendMessage = async (e) => {
+    e.preventDefault();
+    
+    if (!newMessage.trim() || !activeChat || !socket || sending) return;
+
+    const messageData = {
       chat_id: activeChat.chat_id,
       user_id: currentUser.user_id,
       content: newMessage.trim(),
-      message_type: 'text',
-      user_name: currentUser.name,
-      user_email: currentUser.email,
-      created_at: new Date().toISOString(),
-      is_own: true,
-      is_sending: true
+      message_type: 'text'
     };
 
-    setMessages(prev => [...prev, tempMessage]);
-    setNewMessage('');
-    
-    if (messageInputRef.current) {
-      messageInputRef.current.focus();
-    }
+    try {
+      setSending(true);
+      setError('');
+      
+      const tempMessage = {
+        message_id: Date.now(),
+        chat_id: activeChat.chat_id,
+        user_id: currentUser.user_id,
+        content: newMessage.trim(),
+        message_type: 'text',
+        user_name: currentUser.name,
+        user_email: currentUser.email,
+        created_at: new Date().toISOString(),
+        is_own: true,
+        is_sending: true
+      };
 
-    // Используем callback для обработки ошибок WebSocket
-    socket.emit('send_message', messageData, (response) => {
-      if (response && response.error) {
-        setError('Ошибка отправки: ' + response.error);
-        setMessages(prev => prev.filter(msg => !msg.is_sending));
+      setMessages(prev => [...prev, tempMessage]);
+      setNewMessage('');
+      
+      if (messageInputRef.current) {
+        messageInputRef.current.focus();
       }
-    });
-    
-    // Автоматически убираем временное сообщение через 5 секунд на всякий случай
-    setTimeout(() => {
-      setMessages(prev => prev.filter(msg => !msg.is_sending || msg.message_id !== tempMessage.message_id));
-    }, 5000);
-    
-  } catch (error) {
-    console.error('Ошибка отправки:', error);
-    setError('Ошибка отправки сообщения');
-    setMessages(prev => prev.filter(msg => !msg.is_sending));
-  } finally {
-    setSending(false);
-  }
-};
 
-  // Отправка файла при подтверждении
+      socket.emit('send_message', messageData, (response) => {
+        if (response && response.error) {
+          setError('Ошибка отправки: ' + response.error);
+          setMessages(prev => prev.filter(msg => !msg.is_sending));
+        }
+      });
+      
+      setTimeout(() => {
+        setMessages(prev => prev.filter(msg => !msg.is_sending || msg.message_id !== tempMessage.message_id));
+      }, 5000);
+      
+    } catch (error) {
+      console.error('Ошибка отправки:', error);
+      setError('Ошибка отправки сообщения');
+      setMessages(prev => prev.filter(msg => !msg.is_sending));
+    } finally {
+      setSending(false);
+    }
+  };
+
   const confirmFileSend = () => {
     if (selectedFile) {
       sendFile(selectedFile);
     }
   };
 
-  // Отмена отправки файла
   const cancelFileSend = () => {
     setSelectedFile(null);
     setFilePreview(null);
@@ -599,21 +459,125 @@ const getFileTypeText = (fileType, fileName = '') => {
       .join(', ') || 'Пользователь';
   };
 
- // Рендер содержимого сообщения
-const renderMessageContent = (message) => {
-  switch (message.message_type) {
-    case 'image':
-      return (
-        <div className="message-media">
-          <img 
-            src={`${API_BASE_URL}${message.attachment_url}`} 
-            alt="Изображение"
-            className="message-image"
-            onClick={() => window.open(`${API_BASE_URL}${message.attachment_url}`, '_blank')}
-          />
+  const VoiceMessagePlayer = ({ message, currentUser, API_BASE_URL }) => {
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const audioRef = useRef(null);
+  const progressRef = useRef(null);
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+
+    const updateTime = () => setCurrentTime(audio.currentTime);
+    const updateDuration = () => setDuration(audio.duration || 0);
+    const handleEnded = () => setIsPlaying(false);
+    const handleLoad = () => setDuration(audio.duration || 0);
+
+    audio.addEventListener('timeupdate', updateTime);
+    audio.addEventListener('loadedmetadata', updateDuration);
+    audio.addEventListener('ended', handleEnded);
+    audio.addEventListener('canplaythrough', handleLoad);
+
+    return () => {
+      audio.removeEventListener('timeupdate', updateTime);
+      audio.removeEventListener('loadedmetadata', updateDuration);
+      audio.removeEventListener('ended', handleEnded);
+      audio.removeEventListener('canplaythrough', handleLoad);
+    };
+  }, []);
+
+  const togglePlayPause = () => {
+    const audio = audioRef.current;
+    if (!audio) return;
+
+    if (isPlaying) {
+      audio.pause();
+    } else {
+      audio.play().catch(console.error);
+    }
+    setIsPlaying(!isPlaying);
+  };
+
+  const handleProgressClick = (e) => {
+    const audio = audioRef.current;
+    const progress = progressRef.current;
+    if (!audio || !progress) return;
+
+    const rect = progress.getBoundingClientRect();
+    const percent = (e.clientX - rect.left) / rect.width;
+    audio.currentTime = percent * duration;
+  };
+
+  const formatTime = (seconds) => {
+    if (!seconds || isNaN(seconds)) return '0:00';
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  const progressPercent = duration ? (currentTime / duration) * 100 : 0;
+
+  return (
+    <div className={`voice-message-player ${isPlaying ? 'playing' : ''}`}>
+      <audio
+        ref={audioRef}
+        src={`${API_BASE_URL}${message.attachment_url}`}
+        preload="metadata"
+      />
+      
+      <div className="voice-player-container">
+        <div className="voice-controls">
+          <button 
+            className="play-pause-btn"
+            onClick={togglePlayPause}
+            title={isPlaying ? 'Пауза' : 'Воспроизвести'}
+          >
+            {isPlaying ? (
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                <rect x="6" y="4" width="4" height="16"/>
+                <rect x="14" y="4" width="4" height="16"/>
+              </svg>
+            ) : (
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M8 5v14l11-7z"/>
+              </svg>
+            )}
+          </button>
+
+          <div 
+            ref={progressRef}
+            className="voice-progress"
+            onClick={handleProgressClick}
+          >
+            <div 
+              className="progress-bar"
+              style={{ width: `${progressPercent}%` }}
+            />
+          </div>
         </div>
+
+        <div className="voice-time">
+          <span className="current-time">{formatTime(currentTime)}</span>
+          <span className="duration">{formatTime(duration)}</span>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+  const renderMessageContent = (message) => {
+  switch (message.message_type) {
+    case 'voice':
+      return (
+        <VoiceMessagePlayer 
+          message={message}
+          currentUser={currentUser}
+          API_BASE_URL={API_BASE_URL}
+        />
       );
-    
+      
     case 'video':
       return (
         <div className="message-media">
@@ -629,9 +593,23 @@ const renderMessageContent = (message) => {
       );
     
     case 'file':
+    case 'image':
       const fileName = message.original_filename || message.content;
       const fileIcon = getFileIcon(message.file_type || '', fileName);
       const fileTypeText = getFileTypeText(message.file_type || '', fileName);
+      
+      if (message.message_type === 'image') {
+        return (
+          <div className="message-media">
+            <img 
+              src={`${API_BASE_URL}${message.attachment_url}`} 
+              alt={fileName}
+              className="message-image"
+              onClick={() => window.open(`${API_BASE_URL}${message.attachment_url}`, '_blank')}
+            />
+          </div>
+        );
+      }
       
       return (
         <div className="message-file">
@@ -662,7 +640,7 @@ const renderMessageContent = (message) => {
       return <div className="message-text">{message.content}</div>;
   }
 };
-  // Группировка сообщений по дате
+
   const groupMessagesByDate = (messages) => {
     const groups = [];
     let currentDate = null;
@@ -703,7 +681,6 @@ const renderMessageContent = (message) => {
   return (
     <div className="messenger">
       <div className="chat-sidebar">
-        {/* Боковая панель чатов */}
         <div className="sidebar-header">
           <div className="current-user-info">
             <div className="avatar small">
@@ -749,7 +726,6 @@ const renderMessageContent = (message) => {
               autoFocus
             />
             
-            {/* Результаты поиска */}
             <div className="search-results">
               {loading ? (
                 <div className="loading">Поиск...</div>
@@ -768,12 +744,10 @@ const renderMessageContent = (message) => {
                       <div className="user-email">{user.email}</div>
                     </div>
                     <div className="user-status">
-                      {user.is_online ? (
+                      {onlineUsers.has(user.user_id) ? (
                         <span className="online">online</span>
                       ) : (
-                        <span className="offline">
-                          был(а) {new Date(user.last_seen).toLocaleDateString('ru-RU')}
-                        </span>
+                        <span className="offline">offline</span>
                       )}
                     </div>
                   </div>
@@ -808,6 +782,9 @@ const renderMessageContent = (message) => {
                   loadMessages(chat.chat_id);
                 }}
               >
+                <div className="chat-avatar">
+                  {getOtherParticipants(chat).split(',')[0].charAt(0).toUpperCase()}
+                </div>
                 <div className="chat-info">
                   <div className="chat-name">
                     {getOtherParticipants(chat)}
@@ -837,9 +814,14 @@ const renderMessageContent = (message) => {
           <>
             <div className="chat-header">
               <div className="chat-header-info">
+                <div className="chat-avatar">
+                  {getOtherParticipants(activeChat).split(',')[0].charAt(0).toUpperCase()}
+                </div>
                 <div>
                   <h3>{getOtherParticipants(activeChat)}</h3>
-                  <span className="online-status">online</span>
+                  <span className="online-status">
+                    {onlineUsers.has(activeChat.participant_id) ? 'online' : 'offline'}
+                  </span>
                 </div>
               </div>
             </div>
@@ -868,6 +850,11 @@ const renderMessageContent = (message) => {
                         key={item.message_id}
                         className={`message ${item.is_own ? 'own' : 'other'} ${item.is_sending ? 'sending' : ''}`}
                       >
+                        {!item.is_own && (
+                          <div className="message-avatar">
+                            {item.user_name?.charAt(0).toUpperCase()}
+                          </div>
+                        )}
                         <div className="message-content">
                           {!item.is_own && (
                             <div className="message-sender">
@@ -888,99 +875,111 @@ const renderMessageContent = (message) => {
               )}
             </div>
 
-            {/* Форма ввода сообщения с возможностью отправки файлов */}
             <form className="message-input-form" onSubmit={sendMessage}>
-{selectedFile && (
-  <div className="file-preview">
-    <div className="file-preview-content">
-      {filePreview ? (
-        filePreview.startsWith('data:image') ? (
-          <img src={filePreview} alt="Preview" className="file-preview-image" />
-        ) : filePreview.startsWith('blob:') ? (
-          <video src={filePreview} className="file-preview-video" controls />
-        ) : null
-      ) : (
-        <div className="file-preview-icon" title={getFileTypeText(selectedFile.type, selectedFile.name)}>
-          {getFileIcon(selectedFile.type, selectedFile.name)}
-        </div>
-      )}
-      <div className="file-preview-info">
-        <div className="file-name">{selectedFile.name}</div>
-        <div className="file-type">{getFileTypeText(selectedFile.type, selectedFile.name)}</div>
-        <div className="file-size">
-          {(selectedFile.size / 1024 / 1024).toFixed(2)} MB
-        </div>
-      </div>
-    </div>
-    <div className="file-preview-actions">
-      <button 
-        type="button" 
-        onClick={confirmFileSend}
-        disabled={uploadingFile}
-        className="send-file-btn"
-      >
-        {uploadingFile ? 'Отправка...' : 'Отправить'}
-      </button>
-      <button 
-        type="button" 
-        onClick={cancelFileSend}
-        disabled={uploadingFile}
-        className="cancel-file-btn"
-      >
-        Отмена
-      </button>
-    </div>
-  </div>
-)}
+              {selectedFile && (
+                <div className="file-preview">
+                  <div className="file-preview-content">
+                    {filePreview ? (
+                      filePreview.startsWith('data:image') ? (
+                        <img src={filePreview} alt="Preview" className="file-preview-image" />
+                      ) : filePreview.startsWith('blob:') ? (
+                        <video src={filePreview} className="file-preview-video" controls />
+                      ) : null
+                    ) : (
+                      <div className="file-preview-icon">
+                        {getFileIcon(selectedFile.type, selectedFile.name)}
+                      </div>
+                    )}
+                    <div className="file-preview-info">
+                      <div className="file-name">{selectedFile.name}</div>
+                      <div className="file-type">{getFileTypeText(selectedFile.type, selectedFile.name)}</div>
+                      <div className="file-size">
+                        {(selectedFile.size / 1024 / 1024).toFixed(2)} MB
+                      </div>
+                    </div>
+                  </div>
+                  <div className="file-preview-actions">
+                    <button 
+                      type="button" 
+                      onClick={confirmFileSend}
+                      disabled={uploadingFile}
+                      className="send-file-btn"
+                    >
+                      {uploadingFile ? 'Отправка...' : 'Отправить'}
+                    </button>
+                    <button 
+                      type="button" 
+                      onClick={cancelFileSend}
+                      disabled={uploadingFile}
+                      className="cancel-file-btn"
+                    >
+                      Отмена
+                    </button>
+                  </div>
+                </div>
+              )}
 
-  <div className="input-container">
-    <input
-      type="file"
-      ref={fileInputRef}
-      onChange={handleFileSelect}
-      accept="image/*,video/*,.pdf,.doc,.docx,.txt"
-      style={{ display: 'none' }}
-    />
-    
-    <button 
-      type="button"
-      className="attach-file-btn"
-      onClick={() => fileInputRef.current?.click()}
-      title="Прикрепить файл"
-      disabled={uploadingFile || sending || selectedFile}
-    >
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-        <path d="M16.5 6v11.5c0 2.21-1.79 4-4 4s-4-1.79-4-4V5c0-1.38 1.12-2.5 2.5-2.5s2.5 1.12 2.5 2.5v10.5c0 .55-.45 1-1 1s-1-.45-1-1V6H10v9.5c0 1.38 1.12 2.5 2.5 2.5s2.5-1.12 2.5-2.5V5c0-2.21-1.79-4-4-4S7 2.79 7 5v12.5c0 3.04 2.46 5.5 5.5 5.5s5.5-2.46 5.5-5.5V6h-1.5z"/>
-      </svg>
-    </button>
+              <div className="input-container">
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  onChange={handleFileSelect}
+                  accept="image/*,video/*,.pdf,.doc,.docx,.txt,.zip,.rar"
+                  style={{ display: 'none' }}
+                />
+                
+                <button 
+                  type="button"
+                  className="attach-file-btn"
+                  onClick={() => fileInputRef.current?.click()}
+                  title="Прикрепить файл"
+                  disabled={uploadingFile || sending || selectedFile}
+                >
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M16.5 6v11.5c0 2.21-1.79 4-4 4s-4-1.79-4-4V5c0-1.38 1.12-2.5 2.5-2.5s2.5 1.12 2.5 2.5v10.5c0 .55-.45 1-1 1s-1-.45-1-1V6H10v9.5c0 1.38 1.12 2.5 2.5 2.5s2.5-1.12 2.5-2.5V5c0-2.21-1.79-4-4-4S7 2.79 7 5v12.5c0 3.04 2.46 5.5 5.5 5.5s5.5-2.46 5.5-5.5V6h-1.5z"/>
+                  </svg>
+                </button>
 
-    <input
-      ref={messageInputRef}
-      type="text"
-      value={newMessage}
-      onChange={(e) => setNewMessage(e.target.value)}
-      onKeyPress={handleKeyPress}
-      placeholder="Введите сообщение..."
-      className="message-input"
-      disabled={sending || uploadingFile || selectedFile}
-    />
+                <button 
+                  type="button"
+                  className="voice-message-btn"
+                  onClick={() => setShowVoiceRecorder(true)}
+                  title="Голосовое сообщение"
+                  disabled={uploadingFile || sending || selectedFile}
+                >
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/>
+                    <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/>
+                  </svg>
+                </button>
 
-    <button 
-      type="submit" 
-      className={`send-button ${sending ? 'sending' : ''}`}
-      disabled={(!newMessage.trim() && !selectedFile) || sending || uploadingFile}
-      title="Отправить сообщение"
-    >
-      {sending ? (
-        <div className="spinner"></div>
-      ) : (
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-          <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
-        </svg>
-      )}
-    </button>
-  </div>
-</form>
+                <input
+                  ref={messageInputRef}
+                  type="text"
+                  value={newMessage}
+                  onChange={(e) => setNewMessage(e.target.value)}
+                  onKeyPress={handleKeyPress}
+                  placeholder="Введите сообщение..."
+                  className="message-input"
+                  disabled={sending || uploadingFile || selectedFile}
+                />
+
+                <button 
+                  type="submit" 
+                  className={`send-button ${sending ? 'sending' : ''}`}
+                  disabled={(!newMessage.trim() && !selectedFile) || sending || uploadingFile}
+                  title="Отправить сообщение"
+                >
+                  {sending ? (
+                    <div className="spinner"></div>
+                  ) : (
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
+                    </svg>
+                  )}
+                </button>
+              </div>
+            </form>
           </>
         ) : (
           <div className="no-chat-selected">
@@ -997,6 +996,21 @@ const renderMessageContent = (message) => {
           </div>
         )}
       </div>
+
+      {showVoiceRecorder && (
+        <VoiceRecorder
+          chatId={activeChat?.chat_id}
+          userId={currentUser.user_id}
+          onSendVoice={(message) => {
+            setMessages(prev => [...prev, { 
+              ...message, 
+              is_own: true 
+            }]);
+            setShowVoiceRecorder(false);
+          }}
+          onClose={() => setShowVoiceRecorder(false)}
+        />
+      )}
 
       {error && (
         <div className="error-toast">
