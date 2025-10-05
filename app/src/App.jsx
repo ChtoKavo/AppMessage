@@ -6,6 +6,7 @@ import Feed from './components/Feed';
 import Notifications from './components/Notifications';
 import Friends from './components/Friends';
 import Profile from './components/Profile';
+import AdminPanel from './components/AdminPanel';
 import './App.css';
 
 function App() {
@@ -14,6 +15,7 @@ function App() {
   const [activeTab, setActiveTab] = useState('feed');
   const [socket, setSocket] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [showAdminPanel, setShowAdminPanel] = useState(false);
 
   useEffect(() => {
     loadUserFromStorage();
@@ -67,6 +69,7 @@ function App() {
     console.log('Logging out...');
     localStorage.removeItem('currentUser');
     setCurrentUser(null);
+    setShowAdminPanel(false);
     if (socket) {
       socket.disconnect();
     }
@@ -86,6 +89,8 @@ function App() {
         return <Notifications currentUser={currentUser} socket={socket} />;
       case 'profile':
         return <Profile currentUser={currentUser} />;
+      case 'admin':
+        return <AdminPanel currentUser={currentUser} onBack={() => setActiveTab('feed')} />;
       default:
         return <Feed currentUser={currentUser} socket={socket} />;
     }
@@ -107,7 +112,11 @@ function App() {
           <header className="app-header">
             <div className="header-content">
               <h1>Социальная сеть</h1>
-             
+              <div className="user-info">
+                <span className="welcome-text">
+                  {window.innerWidth > 480 ? `Привет, ${currentUser.name}` : currentUser.name}
+                </span>
+              </div>
             </div>
           </header>
 
@@ -143,15 +152,22 @@ function App() {
               >
                 👤 Профиль
               </button>
+              
+              {/* Кнопка админ-панели в навигации для администраторов */}
+              {currentUser.role === 'admin' && (
+                <button 
+                  className={`nav-btn admin-btn ${activeTab === 'admin' ? 'active' : ''}`}
+                  onClick={() => setActiveTab('admin')}
+                >
+                  ⚙️ Админ-панель
+                </button>
 
-               <div className="user-info">
-  <span className="welcome-text">
-    {window.innerWidth > 480 ? `Привет, ${currentUser.name}` : currentUser.name}
-  </span>
-  <button onClick={handleLogout} className="logout-button">
-    {window.innerWidth > 480 ? 'Выйти' : '🚪'}
-  </button>
-</div>
+                
+              )}
+
+              <button onClick={handleLogout} className="logout-button">
+                  {window.innerWidth > 480 ? 'Выйти' : '🚪'}
+                </button>
             </nav>
 
             <main className="app-content">

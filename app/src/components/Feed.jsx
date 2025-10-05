@@ -18,6 +18,28 @@ const Feed = ({ currentUser, socket }) => {
     }
   }, [currentUser]);
 
+  // В компоненте Feed
+useEffect(() => {
+  const fetchPosts = async () => {
+    try {
+      setLoading(true);
+      const response = await fetch(`http://localhost:5001/api/posts?user_id=${currentUser.user_id}`);
+      if (response.ok) {
+        const data = await response.json();
+        setPosts(data);
+      } else {
+        console.error('Failed to fetch posts');
+      }
+    } catch (error) {
+      console.error('Error loading posts:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  fetchPosts();
+}, [currentUser.user_id]);
+
   useEffect(() => {
     if (socket) {
       console.log('Socket connected in Feed component:', socket.connected);
@@ -50,35 +72,40 @@ const Feed = ({ currentUser, socket }) => {
   }, [socket]);
 
   const loadPosts = async () => {
-    try {
-      setLoading(true);
-      setError('');
-      const response = await fetch(
-        `${API_BASE_URL}/api/posts?user_id=${currentUser.user_id}`
-      );
-      
-      if (!response.ok) {
-        throw new Error('Ошибка загрузки постов');
-      }
-      
-      const data = await response.json();
-      
-      // Убеждаемся, что data - массив
-      if (Array.isArray(data)) {
-        setPosts(data);
-      } else {
-        console.error('Полученные данные не являются массивом:', data);
-        setPosts([]);
-        setError('Ошибка формата данных');
-      }
-    } catch (error) {
-      console.error('Ошибка загрузки постов:', error);
-      setError('Не удалось загрузить посты');
-      setPosts([]);
-    } finally {
-      setLoading(false);
+  try {
+    setLoading(true);
+    setError('');
+    
+    // Формируем URL с параметрами
+    const url = new URL(`${API_BASE_URL}/api/posts`);
+    if (currentUser && currentUser.user_id) {
+      url.searchParams.append('user_id', currentUser.user_id.toString());
     }
-  };
+    
+    const response = await fetch(url);
+    
+    if (!response.ok) {
+      throw new Error(`Ошибка загрузки постов: ${response.status}`);
+    }
+    
+    const data = await response.json();
+    
+    // Убеждаемся, что data - массив
+    if (Array.isArray(data)) {
+      setPosts(data);
+    } else {
+      console.error('Полученные данные не являются массивом:', data);
+      setPosts([]);
+      setError('Ошибка формата данных');
+    }
+  } catch (error) {
+    console.error('Ошибка загрузки постов:', error);
+    setError('Не удалось загрузить посты');
+    setPosts([]);
+  } finally {
+    setLoading(false);
+  }
+};
 
   // Обработчики WebSocket событий для лайков
   const handlePostLiked = (data) => {

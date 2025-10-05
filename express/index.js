@@ -21,32 +21,42 @@ const corsOptions = {
   origin: ["http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:3000", "http://localhost:5174"],
   credentials: true,
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
-  allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With", "Accept", "Origin", "Access-Control-Allow-Headers"]
+  allowedHeaders: [
+    "Content-Type", 
+    "Authorization", 
+    "X-Requested-With", 
+    "Accept", 
+    "Origin", 
+    "Access-Control-Allow-Headers",
+    "user-id",
+    "x-user-id"
+  ],
+  exposedHeaders: ["Content-Range", "X-Content-Range"]
 };
 
 app.use(cors(corsOptions));
 app.use(bodyParser.json({ limit: '50mb' }));
 app.use(bodyParser.urlencoded({ extended: true, limit: '50mb' }));
-
 app.use((req, res, next) => {
   const origin = req.headers.origin;
+  
+  
   if (corsOptions.origin.includes(origin)) {
     res.header('Access-Control-Allow-Origin', origin);
   }
-  res.header('Access-Control-Allow-Credentials', 'true');
-  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
-  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin, Access-Control-Allow-Headers');
   
+  res.header('Access-Control-Allow-Credentials', 'true');
+  res.header('Access-Control-Allow-Methods', corsOptions.methods.join(', '));
+  res.header('Access-Control-Allow-Headers', corsOptions.allowedHeaders.join(', '));
+  res.header('Access-Control-Expose-Headers', corsOptions.exposedHeaders.join(', '));
+  
+
   if (req.method === 'OPTIONS') {
-    return res.sendStatus(200);
+    return res.status(200).end();
   }
   
   next();
 });
-
-app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ extended: true, limit: '50mb' }));
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // =========================== НАСТРОЙКА SOCKET.IO ============================
 const io = socketIo(server, {
@@ -633,6 +643,496 @@ app.post('/messages/upload', upload.single('file'), async (req, res) => {
   } catch (error) {
     console.error('Ошибка загрузки файла:', error);
     res.status(500).json({ error: 'Ошибка загрузки файла: ' + error.message });
+  }
+});
+
+
+// =========================== API ДЛЯ АДМИНИСТРАТОРА ============================
+
+
+// Получение всех постов для админ-панели (исправленная версия)
+app.get('/admin/posts', async (req, res) => {
+  let connection;
+  try {
+    console.log('=== НАЧАЛО ЗАПРОСА ADMIN/POSTS ===');
+    
+    const { limit = '100' } = req.query;
+    console.log('Получен лимит:', limit);
+    
+    // Получаем соединение для отладки
+    connection = await db.getConnection();
+    
+    // Сначала просто получаем все посты без сложных JOIN
+    const simpleQuery = `
+      SELECT 
+        post_id,
+        user_id,
+        title,
+        content,
+        image_url,
+        is_public,
+        is_published,
+        created_at,
+        updated_at
+      FROM posts 
+      ORDER BY created_at DESC
+    `;
+    
+    console.log('Выполняем простой запрос постов');
+    const [posts] = await connection.execute(simpleQuery);
+    console.log(`Найдено постов в БД: ${posts.length}`);
+
+    if (posts.length === 0) {
+      console.log('В базе данных нет постов');
+      return res.json([]);
+    }
+
+    // Теперь для каждого поста получаем информацию об авторе и счетчики
+    const postsWithDetails = [];
+    
+    for (const post of posts) {
+      try {
+        // Получаем информацию об авторе
+        const [users] = await connection.execute(
+          'SELECT name, email FROM users WHERE user_id = ?',
+          [post.user_id]
+        );
+        
+        const author = users[0] || { name: 'Неизвестный', email: 'unknown@example.com' };
+
+        // Получаем счетчики
+        const [likes] = await connection.execute(
+          'SELECT COUNT(*) as count FROM post_likes WHERE post_id = ?',
+          [post.post_id]
+        );
+
+        const [comments] = await connection.execute(
+          'SELECT COUNT(*) as count FROM comments WHERE post_id = ?',
+          [post.post_id]
+        );
+
+        postsWithDetails.push({
+          post_id: post.post_id,
+          user_id: post.user_id,
+          title: post.title,
+          content: post.content,
+          image_url: post.image_url,
+          is_public: Boolean(post.is_public),
+          is_published: Boolean(post.is_published),
+          created_at: post.created_at,
+          updated_at: post.updated_at,
+          author_name: author.name,
+          author_email: author.email,
+          likes_count: likes[0]?.count || 0,
+          comments_count: comments[0]?.count || 0
+        });
+
+      } catch (postError) {
+        console.error(`Ошибка обработки поста ${post.post_id}:`, postError);
+        // Добавляем пост с базовой информацией
+        postsWithDetails.push({
+          post_id: post.post_id,
+          user_id: post.user_id,
+          title: post.title,
+          content: post.content,
+          image_url: post.image_url,
+          is_public: Boolean(post.is_public),
+          is_published: Boolean(post.is_published),
+          created_at: post.created_at,
+          updated_at: post.updated_at,
+          author_name: 'Ошибка загрузки',
+          author_email: 'error@example.com',
+          likes_count: 0,
+          comments_count: 0
+        });
+      }
+    }
+
+    // Применяем лимит
+    const limitNum = parseInt(limit);
+    const finalPosts = isNaN(limitNum) ? postsWithDetails : postsWithDetails.slice(0, limitNum);
+    
+    console.log(`Возвращаем постов: ${finalPosts.length}`);
+    console.log('=== УСПЕШНОЕ ЗАВЕРШЕНИЕ ЗАПРОСА ===');
+    
+    res.json(finalPosts);
+    
+  } catch (error) {
+    console.error('=== КРИТИЧЕСКАЯ ОШИБКА В ADMIN/POSTS ===');
+    console.error('Ошибка:', error.message);
+    console.error('Stack:', error.stack);
+    
+    res.status(500).json({ 
+      error: 'Database error',
+      message: error.message,
+      details: 'Ошибка при выполнении запроса к базе данных'
+    });
+  } finally {
+    if (connection) {
+      connection.release();
+    }
+  }
+});
+
+// Endpoint для проверки состояния базы данных
+app.get('/admin/debug', async (req, res) => {
+  try {
+    console.log('=== DEBUG INFORMATION ===');
+    
+    const connection = await db.getConnection();
+    
+    // Проверяем таблицу posts
+    const [postsInfo] = await connection.execute('SHOW COLUMNS FROM posts');
+    console.log('Структура таблицы posts:', postsInfo);
+    
+    const [postsCount] = await connection.execute('SELECT COUNT(*) as count FROM posts');
+    console.log('Количество постов:', postsCount[0].count);
+    
+    // Проверяем таблицу users
+    const [usersCount] = await connection.execute('SELECT COUNT(*) as count FROM users');
+    console.log('Количество пользователей:', usersCount[0].count);
+    
+    // Пробуем выполнить простой запрос
+    const [samplePosts] = await connection.execute('SELECT * FROM posts LIMIT 3');
+    console.log('Пример постов:', samplePosts);
+    
+    connection.release();
+    
+    res.json({
+      posts_structure: postsInfo,
+      posts_count: postsCount[0].count,
+      users_count: usersCount[0].count,
+      sample_posts: samplePosts
+    });
+    
+  } catch (error) {
+    console.error('DEBUG ERROR:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Упрощенный endpoint для постов (без счетчиков)
+app.get('/admin/posts-simple', async (req, res) => {
+  try {
+    console.log('=== УПРОЩЕННЫЙ ЗАПРОС ПОСТОВ ===');
+    
+    const query = `
+      SELECT 
+        p.post_id,
+        p.user_id,
+        p.title,
+        p.content,
+        p.image_url,
+        p.is_public,
+        p.is_published,
+        p.created_at,
+        p.updated_at,
+        u.name as author_name,
+        u.email as author_email
+      FROM posts p
+      LEFT JOIN users u ON p.user_id = u.user_id
+      ORDER BY p.created_at DESC
+      LIMIT 100
+    `;
+    
+    console.log('Выполняем упрощенный запрос');
+    const [posts] = await db.execute(query);
+    console.log(`Успешно загружено постов: ${posts.length}`);
+    
+    // Просто возвращаем посты без дополнительных запросов
+    const simplePosts = posts.map(post => ({
+      ...post,
+      likes_count: 0,
+      comments_count: 0,
+      is_public: Boolean(post.is_public),
+      is_published: Boolean(post.is_published)
+    }));
+    
+    res.json(simplePosts);
+    
+  } catch (error) {
+    console.error('Ошибка в упрощенном запросе:', error);
+    res.status(500).json({ 
+      error: 'Database error in simple query',
+      message: error.message 
+    });
+  }
+});
+
+// Получение всех пользователей для админ-панели
+app.get('/admin/users', async (req, res) => {
+  try {
+    const [users] = await db.execute(`
+      SELECT 
+        user_id, 
+        name, 
+        surname,
+        nick,
+        email, 
+        role, 
+        is_active,
+        is_online,
+        is_confirmed,
+        created_at, 
+        last_seen,
+        avatar_url,
+        bio
+      FROM users 
+      ORDER BY created_at DESC
+    `);
+    res.json(users);
+  } catch(error) {
+    console.error('Ошибка загрузки пользователей для админ-панели:', error);
+    res.status(500).json({error: 'Database error: ' + error.message});
+  }
+});
+
+// Статистика для админ-панели
+app.get('/admin/statistics', async (req, res) => {
+  try {
+    // Общее количество пользователей
+    const [totalUsers] = await db.execute('SELECT COUNT(*) as count FROM users');
+    
+    // Общее количество постов
+    const [totalPosts] = await db.execute('SELECT COUNT(*) as count FROM posts');
+    
+    // Активные чаты (чаты с сообщениями за последние 24 часа)
+    const [activeChats] = await db.execute(`
+      SELECT COUNT(DISTINCT chat_id) as count 
+      FROM messages 
+      WHERE created_at > DATE_SUB(NOW(), INTERVAL 24 HOUR)
+    `);
+    
+    // Онлайн пользователи
+    const [onlineUsers] = await db.execute('SELECT COUNT(*) as count FROM users WHERE is_online = TRUE');
+    
+    // Новые пользователи за последнюю неделю
+    const [newUsers] = await db.execute(`
+      SELECT COUNT(*) as count 
+      FROM users 
+      WHERE created_at > DATE_SUB(NOW(), INTERVAL 7 DAY)
+    `);
+    
+    // Новые посты за последнюю неделю
+    const [newPosts] = await db.execute(`
+      SELECT COUNT(*) as count 
+      FROM posts 
+      WHERE created_at > DATE_SUB(NOW(), INTERVAL 7 DAY)
+    `);
+
+    // Последние действия
+    const [recentActivity] = await db.execute(`
+      (SELECT 'post' as type, CONCAT('Новый пост от ', u.name) as details, p.created_at as timestamp
+       FROM posts p
+       JOIN users u ON p.user_id = u.user_id
+       ORDER BY p.created_at DESC 
+       LIMIT 5)
+      UNION ALL
+      (SELECT 'user' as type, CONCAT('Новый пользователь: ', name) as details, created_at as timestamp
+       FROM users 
+       ORDER BY created_at DESC 
+       LIMIT 5)
+      UNION ALL
+      (SELECT 'message' as type, CONCAT('Новое сообщение от ', u.name) as details, m.created_at as timestamp
+       FROM messages m
+       JOIN users u ON m.user_id = u.user_id
+       ORDER BY m.created_at DESC 
+       LIMIT 5)
+      ORDER BY timestamp DESC 
+      LIMIT 10
+    `);
+
+    res.json({
+      totalUsers: totalUsers[0].count,
+      totalPosts: totalPosts[0].count,
+      activeChats: activeChats[0].count,
+      onlineUsers: onlineUsers[0].count,
+      newUsers: newUsers[0].count,
+      newPosts: newPosts[0].count,
+      recentActivity
+    });
+  } catch (error) {
+    console.error('Ошибка загрузки статистики:', error);
+    res.status(500).json({ error: 'Database error: ' + error.message });
+  }
+});
+
+
+// Удаление пользователя (с обработкой связанных данных)
+app.delete('/admin/users/:userId', async (req, res) => {
+  let connection;
+  try {
+    const { userId } = req.params;
+    const { current_user_id } = req.query;
+    
+    console.log('Попытка удаления пользователя:', userId, 'от пользователя:', current_user_id);
+
+    // Проверяем существование пользователя
+    const [users] = await db.execute('SELECT * FROM users WHERE user_id = ?', [userId]);
+    if (users.length === 0) {
+      return res.status(404).json({ error: 'Пользователь не найден' });
+    }
+
+    // Нельзя удалить самого себя
+    if (parseInt(userId) === parseInt(current_user_id)) {
+      return res.status(400).json({ error: 'Нельзя удалить самого себя' });
+    }
+
+    // Получаем соединение для транзакции
+    connection = await db.getConnection();
+    await connection.beginTransaction();
+
+    try {
+      console.log('Начинаем удаление связанных данных пользователя:', userId);
+
+      // 1. Удаляем уведомления, связанные с пользователем
+      await connection.execute('DELETE FROM notifications WHERE user_id = ? OR from_user_id = ?', [userId, userId]);
+      console.log('Удалены уведомления');
+
+      // 2. Удаляем лайки комментариев
+      await connection.execute('DELETE FROM comment_likes WHERE user_id = ?', [userId]);
+      console.log('Удалены лайки комментариев');
+
+      // 3. Удаляем комментарии пользователя
+      await connection.execute('DELETE FROM comments WHERE user_id = ?', [userId]);
+      console.log('Удалены комментарии');
+
+      // 4. Удаляем лайки постов
+      await connection.execute('DELETE FROM post_likes WHERE user_id = ?', [userId]);
+      console.log('Удалены лайки постов');
+
+      // 5. Обновляем посты - устанавливаем user_id в NULL или удаляем
+      // Сначала проверяем, есть ли посты у пользователя
+      const [userPosts] = await connection.execute('SELECT post_id FROM posts WHERE user_id = ?', [userId]);
+      if (userPosts.length > 0) {
+        // Удаляем связанные с постами данные
+        for (const post of userPosts) {
+          await connection.execute('DELETE FROM comments WHERE post_id = ?', [post.post_id]);
+          await connection.execute('DELETE FROM post_likes WHERE post_id = ?', [post.post_id]);
+        }
+        // Удаляем посты пользователя
+        await connection.execute('DELETE FROM posts WHERE user_id = ?', [userId]);
+        console.log('Удалены посты пользователя');
+      }
+
+      // 6. Обрабатываем дружеские связи
+      await connection.execute('DELETE FROM friendships WHERE user_id1 = ? OR user_id2 = ?', [userId, userId]);
+      console.log('Удалены дружеские связи');
+
+      // 7. Обрабатываем чаты, где пользователь является создателем
+      const [userChats] = await connection.execute('SELECT chat_id FROM chats WHERE created_by = ?', [userId]);
+      if (userChats.length > 0) {
+        for (const chat of userChats) {
+          // Удаляем сообщения в чате
+          await connection.execute('DELETE FROM messages WHERE chat_id = ?', [chat.chat_id]);
+          // Удаляем участников чата
+          await connection.execute('DELETE FROM chat_participants WHERE chat_id = ?', [chat.chat_id]);
+        }
+        // Удаляем чаты, созданные пользователем
+        await connection.execute('DELETE FROM chats WHERE created_by = ?', [userId]);
+        console.log('Удалены чаты, созданные пользователем');
+      }
+
+      // 8. Удаляем пользователя из чатов (как участника)
+      await connection.execute('DELETE FROM chat_participants WHERE user_id = ?', [userId]);
+      console.log('Удален пользователь из чатов');
+
+      // 9. Удаляем сообщения пользователя
+      await connection.execute('DELETE FROM messages WHERE user_id = ?', [userId]);
+      console.log('Удалены сообщения пользователя');
+
+      // 10. Удаляем категории пользователя
+      await connection.execute('DELETE FROM user_categories WHERE user_id = ?', [userId]);
+      console.log('Удалены категории пользователя');
+
+      // 11. Наконец удаляем самого пользователя
+      await connection.execute('DELETE FROM users WHERE user_id = ?', [userId]);
+      console.log('Пользователь удален');
+
+      // Фиксируем транзакцию
+      await connection.commit();
+
+      res.json({ 
+        success: true,
+        message: 'Пользователь и все связанные данные успешно удалены',
+        user_id: parseInt(userId)
+      });
+
+    } catch (transactionError) {
+      // Откатываем транзакцию в случае ошибки
+      await connection.rollback();
+      throw transactionError;
+    }
+
+  } catch (error) {
+    console.error('Ошибка удаления пользователя:', error);
+    res.status(500).json({ error: 'Database error: ' + error.message });
+  } finally {
+    if (connection) {
+      connection.release();
+    }
+  }
+});
+
+// Удаление поста
+app.delete('/admin/posts/:postId', async (req, res) => {
+  try {
+    const { postId } = req.params;
+    
+    console.log('Попытка удаления поста:', postId);
+
+    // Проверяем существование поста
+    const [posts] = await db.execute('SELECT * FROM posts WHERE post_id = ?', [postId]);
+    if (posts.length === 0) {
+      return res.status(404).json({ error: 'Пост не найден' });
+    }
+
+    // Удаляем пост (каскадное удаление настроено в БД)
+    await db.execute('DELETE FROM posts WHERE post_id = ?', [postId]);
+    
+    console.log('Пост успешно удален:', postId);
+    
+    res.json({ 
+      success: true,
+      message: 'Пост успешно удален',
+      post_id: parseInt(postId)
+    });
+  } catch (error) {
+    console.error('Ошибка удаления поста:', error);
+    res.status(500).json({ error: 'Database error: ' + error.message });
+  }
+});
+
+// Обновление статуса пользователя
+app.put('/admin/users/:userId/status', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { is_active } = req.body;
+    
+    console.log('Обновление статуса пользователя:', userId, is_active);
+
+    // Проверяем существование пользователя
+    const [users] = await db.execute('SELECT * FROM users WHERE user_id = ?', [userId]);
+    if (users.length === 0) {
+      return res.status(404).json({ error: 'Пользователь не найден' });
+    }
+
+    await db.execute(
+      'UPDATE users SET is_active = ?, updated_at = NOW() WHERE user_id = ?',
+      [is_active, userId]
+    );
+    
+    console.log('Статус пользователя обновлен:', userId, is_active);
+    
+    res.json({ 
+      success: true,
+      message: 'Статус пользователя обновлен',
+      user_id: parseInt(userId),
+      is_active: is_active
+    });
+  } catch (error) {
+    console.error('Ошибка обновления статуса:', error);
+    res.status(500).json({ error: 'Database error: ' + error.message });
   }
 });
 
@@ -1268,9 +1768,21 @@ app.get('/api/posts', async (req, res) => {
       SELECT p.*, u.name as author_name, u.email as author_email
       FROM posts p
       JOIN users u ON p.user_id = u.user_id
-      WHERE p.is_published = TRUE AND (p.is_public = TRUE OR p.user_id = ?)
-      ORDER BY p.created_at DESC
+      WHERE p.is_published = TRUE
     `;
+    
+    let params = [];
+
+    // Если user_id передан и не undefined, добавляем условие
+    if (user_id && user_id !== 'undefined' && user_id !== 'null') {
+      query += ' AND (p.is_public = TRUE OR p.user_id = ?)';
+      params.push(parseInt(user_id));
+    } else {
+      // Если user_id не передан, показываем только публичные посты
+      query += ' AND p.is_public = TRUE';
+    }
+    
+    query += ' ORDER BY p.created_at DESC';
 
     const limitNum = parseInt(limit) || 10;
     const pageNum = parseInt(page) || 1;
@@ -1278,7 +1790,10 @@ app.get('/api/posts', async (req, res) => {
     
     query += ` LIMIT ${limitNum} OFFSET ${offset}`;
 
-    const [posts] = await db.execute(query, [user_id]);
+    console.log('Executing posts query:', query);
+    console.log('With params:', params);
+
+    const [posts] = await db.execute(query, params);
 
     const postsWithCounts = await Promise.all(
       posts.map(async (post) => {
@@ -1294,7 +1809,7 @@ app.get('/api/posts', async (req, res) => {
           );
 
           let is_liked = false;
-          if (user_id) {
+          if (user_id && user_id !== 'undefined' && user_id !== 'null') {
             const [userLike] = await db.execute(
               'SELECT 1 as is_liked FROM post_likes WHERE post_id = ? AND user_id = ?',
               [post.post_id, user_id]
@@ -1924,14 +2439,29 @@ app.get('/api/users/:userId/posts', async (req, res) => {
     const { userId } = req.params;
     const { current_user_id } = req.query;
 
-    const [posts] = await db.execute(`
+    let query = `
       SELECT p.*, u.name as author_name, u.email as author_email
       FROM posts p
       JOIN users u ON p.user_id = u.user_id
-      WHERE p.user_id = ? AND p.is_published = TRUE 
-        AND (p.is_public = TRUE OR p.user_id = ?)
-      ORDER BY p.created_at DESC
-    `, [userId, current_user_id]);
+      WHERE p.user_id = ? AND p.is_published = TRUE
+    `;
+    
+    let params = [userId];
+
+    // Если current_user_id передан и это тот же пользователь, показываем все посты
+    if (current_user_id && current_user_id !== 'undefined' && current_user_id !== 'null' && parseInt(current_user_id) === parseInt(userId)) {
+      // Показываем все посты пользователя (и публичные и приватные)
+    } else {
+      // Для других пользователей показываем только публичные посты
+      query += ' AND p.is_public = TRUE';
+    }
+    
+    query += ' ORDER BY p.created_at DESC';
+
+    console.log('Executing user posts query:', query);
+    console.log('With params:', params);
+
+    const [posts] = await db.execute(query, params);
 
     const postsWithCounts = await Promise.all(
       posts.map(async (post) => {

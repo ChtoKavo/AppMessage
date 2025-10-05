@@ -54,38 +54,44 @@ const Login = ({ onLogin, onSwitchToRegister }) => {
 
   return (
     <div className="login-container">
-      <div className="login-card">
-        <div className="login-header">
+      <div className="login-background">
+        <div className="sphere-12"></div>
+        <div className="sphere-22"></div>
+        <div className="sphere-32"></div>
+      </div>
+      
+      <div className="header-sphere1">
+        <div className="header-content">
           <h1 className="login-title">Вход</h1>
         </div>
-        
-        <form onSubmit={handleSubmit} className="login-form">
+      </div>
+      
+      <div className="login-form">
+        <form onSubmit={handleSubmit} className="form-login">
           <div className="form-group">
-            <label htmlFor="email" className="form-label">Детин</label>
             <input
+              className='inputlol'
               type="email"
               id="email"
               name="email"
               value={formData.email}
               onChange={handleChange}
               required
-              className="form-input"
-              placeholder=""
+              placeholder="Введите ваш email*"
               disabled={loading}
             />
           </div>
 
           <div className="form-group">
-            <label htmlFor="password" className="form-label">Пароль</label>
             <input
+              className='inputlol'
               type="password"
               id="password"
               name="password"
               value={formData.password}
               onChange={handleChange}
               required
-              className="form-input"
-              placeholder=""
+              placeholder="Введите ваш пароль*"
               disabled={loading}
             />
           </div>
@@ -97,13 +103,12 @@ const Login = ({ onLogin, onSwitchToRegister }) => {
             className="login-button"
             disabled={loading}
           >
-            {loading ? '...' : 'Вход'}
+            {loading ? 'Вход...' : 'Войти'}
           </button>
         </form>
 
-        <div className="login-footer">
-          <p className="switch-text">
-            Нет аккаунта?{' '}
+        <div className="switch-auth">
+          <p>Нет аккаунта? 
             <span 
               className="switch-link" 
               onClick={onSwitchToRegister}
