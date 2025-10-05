@@ -22,6 +22,11 @@ const Messenger = ({ currentUser }) => {
   const [uploadingFile, setUploadingFile] = useState(false);
   const [showVoiceRecorder, setShowVoiceRecorder] = useState(false);
   
+  // Новые состояния для управления сообщениями
+  const [contextMenu, setContextMenu] = useState(null);
+  const [editingMessage, setEditingMessage] = useState(null);
+  const [editText, setEditText] = useState('');
+  
   const messagesEndRef = useRef(null);
   const messageInputRef = useRef(null);
   const fileInputRef = useRef(null);
@@ -89,12 +94,23 @@ const Messenger = ({ currentUser }) => {
       setOnlineUsers(new Set(userIds));
     };
 
+    const handleMessageUpdated = (updatedMessage) => {
+      if (updatedMessage.chat_id === activeChat?.chat_id) {
+        setMessages(prev => prev.map(msg => 
+          msg.message_id === updatedMessage.message_id 
+            ? { ...updatedMessage, is_own: updatedMessage.user_id === currentUser.user_id }
+            : msg
+        ));
+      }
+    };
+
     socket.on('new_message', handleNewMessage);
     socket.on('chat_created', handleChatCreated);
     socket.on('message_error', handleMessageError);
     socket.on('user_online', handleUserOnline);
     socket.on('user_offline', handleUserOffline);
     socket.on('online_users_list', handleOnlineUsersList);
+    socket.on('message_updated', handleMessageUpdated);
 
     return () => {
       socket.off('new_message', handleNewMessage);
@@ -103,6 +119,7 @@ const Messenger = ({ currentUser }) => {
       socket.off('user_online', handleUserOnline);
       socket.off('user_offline', handleUserOffline);
       socket.off('online_users_list', handleOnlineUsersList);
+      socket.off('message_updated', handleMessageUpdated);
     };
   }, [socket, activeChat, currentUser]);
 
@@ -117,6 +134,13 @@ const Messenger = ({ currentUser }) => {
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
+
+  // Закрытие контекстного меню при клике вне его
+  useEffect(() => {
+    const handleClick = () => closeContextMenu();
+    document.addEventListener('click', handleClick);
+    return () => document.removeEventListener('click', handleClick);
+  }, []);
 
   const loadChats = async () => {
     try {
@@ -205,6 +229,152 @@ const Messenger = ({ currentUser }) => {
       console.error('Ошибка создания чата:', error);
       setError('Ошибка создания чата');
       setLoading(false);
+    }
+  };
+
+  // Функция для показа контекстного меню с улучшенным позиционированием
+  const handleContextMenu = (e, message) => {
+    e.preventDefault();
+    
+    // Показываем меню только для своих сообщений
+    if (message.is_own && message.message_type === 'text') {
+      const menuWidth = 160; // Примерная ширина меню
+      const menuHeight = 80; // Примерная высота меню
+      const viewportWidth = window.innerWidth;
+      const viewportHeight = window.innerHeight;
+      
+      let x = e.clientX;
+      let y = e.clientY;
+      
+      // Корректируем позицию по X (чтобы меню не выходило за правый край)
+      if (x + menuWidth > viewportWidth) {
+        x = viewportWidth - menuWidth - 10;
+      }
+      
+      // Корректируем позицию по Y (чтобы меню не выходило за нижний край)
+      if (y + menuHeight > viewportHeight) {
+        y = viewportHeight - menuHeight - 10;
+      }
+      
+      // Сдвигаем меню левее курсора для лучшей видимости
+      x = Math.max(10, x - menuWidth / 2);
+      
+      setContextMenu({
+        x: x,
+        y: y,
+        message: message
+      });
+    }
+  };
+
+  // Закрытие контекстного меню
+  const closeContextMenu = () => {
+    setContextMenu(null);
+  };
+
+  // Удаление сообщения
+  const deleteMessage = async (message) => {
+    try {
+      // Проверяем, что это реальное сообщение из базы данных, а не временное
+      if (message.is_sending || typeof message.message_id !== 'number' || message.message_id > 2000000000) {
+        console.log('Нельзя удалить временное сообщение или сообщение с неверным ID');
+        setError('Нельзя удалить отправляемое сообщение');
+        closeContextMenu();
+        return;
+      }
+
+      const response = await fetch(`${API_BASE_URL}/messages/${message.message_id}`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          user_id: currentUser.user_id
+        })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Ошибка удаления сообщения');
+      }
+
+      // Удаляем сообщение из локального состояния
+      setMessages(prev => prev.filter(msg => msg.message_id !== message.message_id));
+      
+    } catch (error) {
+      console.error('Ошибка удаления сообщения:', error);
+      setError('Ошибка удаления сообщения: ' + error.message);
+    } finally {
+      closeContextMenu();
+    }
+  };
+
+  // Начало редактирования сообщения
+  const startEditing = (message) => {
+    setEditingMessage(message);
+    setEditText(message.content);
+    closeContextMenu();
+  };
+
+  // Отмена редактирования
+  const cancelEditing = () => {
+    setEditingMessage(null);
+    setEditText('');
+  };
+
+  // Сохранение отредактированного сообщения
+  const saveEditedMessage = async () => {
+    if (!editText.trim() || !editingMessage) return;
+
+    // Проверяем, что это реальное сообщение из базы данных
+    if (editingMessage.is_sending || typeof editingMessage.message_id !== 'number' || editingMessage.message_id > 2000000000) {
+      console.log('Нельзя редактировать временное сообщение');
+      setError('Нельзя редактировать отправляемое сообщение');
+      cancelEditing();
+      return;
+    }
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/messages/${editingMessage.message_id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          content: editText.trim(),
+          user_id: currentUser.user_id
+        })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Ошибка редактирования сообщения');
+      }
+
+      const updatedMessage = await response.json();
+
+      // Обновляем сообщение в локальном состоянии
+      setMessages(prev => prev.map(msg => 
+        msg.message_id === editingMessage.message_id 
+          ? { ...msg, content: updatedMessage.content, is_edited: true }
+          : msg
+      ));
+
+      cancelEditing();
+      
+    } catch (error) {
+      console.error('Ошибка редактирования сообщения:', error);
+      setError('Ошибка редактирования сообщения: ' + error.message);
+    }
+  };
+
+  // Обработчик клавиш при редактировании
+  const handleEditKeyPress = (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      saveEditedMessage();
+    } else if (e.key === 'Escape') {
+      cancelEditing();
     }
   };
 
@@ -460,186 +630,186 @@ const Messenger = ({ currentUser }) => {
   };
 
   const VoiceMessagePlayer = ({ message, currentUser, API_BASE_URL }) => {
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [currentTime, setCurrentTime] = useState(0);
-  const [duration, setDuration] = useState(0);
-  const audioRef = useRef(null);
-  const progressRef = useRef(null);
+    const [isPlaying, setIsPlaying] = useState(false);
+    const [currentTime, setCurrentTime] = useState(0);
+    const [duration, setDuration] = useState(0);
+    const audioRef = useRef(null);
+    const progressRef = useRef(null);
 
-  useEffect(() => {
-    const audio = audioRef.current;
-    if (!audio) return;
+    useEffect(() => {
+      const audio = audioRef.current;
+      if (!audio) return;
 
-    const updateTime = () => setCurrentTime(audio.currentTime);
-    const updateDuration = () => setDuration(audio.duration || 0);
-    const handleEnded = () => setIsPlaying(false);
-    const handleLoad = () => setDuration(audio.duration || 0);
+      const updateTime = () => setCurrentTime(audio.currentTime);
+      const updateDuration = () => setDuration(audio.duration || 0);
+      const handleEnded = () => setIsPlaying(false);
+      const handleLoad = () => setDuration(audio.duration || 0);
 
-    audio.addEventListener('timeupdate', updateTime);
-    audio.addEventListener('loadedmetadata', updateDuration);
-    audio.addEventListener('ended', handleEnded);
-    audio.addEventListener('canplaythrough', handleLoad);
+      audio.addEventListener('timeupdate', updateTime);
+      audio.addEventListener('loadedmetadata', updateDuration);
+      audio.addEventListener('ended', handleEnded);
+      audio.addEventListener('canplaythrough', handleLoad);
 
-    return () => {
-      audio.removeEventListener('timeupdate', updateTime);
-      audio.removeEventListener('loadedmetadata', updateDuration);
-      audio.removeEventListener('ended', handleEnded);
-      audio.removeEventListener('canplaythrough', handleLoad);
+      return () => {
+        audio.removeEventListener('timeupdate', updateTime);
+        audio.removeEventListener('loadedmetadata', updateDuration);
+        audio.removeEventListener('ended', handleEnded);
+        audio.removeEventListener('canplaythrough', handleLoad);
+      };
+    }, []);
+
+    const togglePlayPause = () => {
+      const audio = audioRef.current;
+      if (!audio) return;
+
+      if (isPlaying) {
+        audio.pause();
+      } else {
+        audio.play().catch(console.error);
+      }
+      setIsPlaying(!isPlaying);
     };
-  }, []);
 
-  const togglePlayPause = () => {
-    const audio = audioRef.current;
-    if (!audio) return;
+    const handleProgressClick = (e) => {
+      const audio = audioRef.current;
+      const progress = progressRef.current;
+      if (!audio || !progress) return;
 
-    if (isPlaying) {
-      audio.pause();
-    } else {
-      audio.play().catch(console.error);
-    }
-    setIsPlaying(!isPlaying);
-  };
+      const rect = progress.getBoundingClientRect();
+      const percent = (e.clientX - rect.left) / rect.width;
+      audio.currentTime = percent * duration;
+    };
 
-  const handleProgressClick = (e) => {
-    const audio = audioRef.current;
-    const progress = progressRef.current;
-    if (!audio || !progress) return;
+    const formatTime = (seconds) => {
+      if (!seconds || isNaN(seconds)) return '0:00';
+      const mins = Math.floor(seconds / 60);
+      const secs = Math.floor(seconds % 60);
+      return `${mins}:${secs.toString().padStart(2, '0')}`;
+    };
 
-    const rect = progress.getBoundingClientRect();
-    const percent = (e.clientX - rect.left) / rect.width;
-    audio.currentTime = percent * duration;
-  };
+    const progressPercent = duration ? (currentTime / duration) * 100 : 0;
 
-  const formatTime = (seconds) => {
-    if (!seconds || isNaN(seconds)) return '0:00';
-    const mins = Math.floor(seconds / 60);
-    const secs = Math.floor(seconds % 60);
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
-  };
+    return (
+      <div className={`voice-message-player ${isPlaying ? 'playing' : ''}`}>
+        <audio
+          ref={audioRef}
+          src={`${API_BASE_URL}${message.attachment_url}`}
+          preload="metadata"
+        />
+        
+        <div className="voice-player-container">
+          <div className="voice-controls">
+            <button 
+              className="play-pause-btn"
+              onClick={togglePlayPause}
+              title={isPlaying ? 'Пауза' : 'Воспроизвести'}
+            >
+              {isPlaying ? (
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                  <rect x="6" y="4" width="4" height="16"/>
+                  <rect x="14" y="4" width="4" height="16"/>
+                </svg>
+              ) : (
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M8 5v14l11-7z"/>
+                </svg>
+              )}
+            </button>
 
-  const progressPercent = duration ? (currentTime / duration) * 100 : 0;
-
-  return (
-    <div className={`voice-message-player ${isPlaying ? 'playing' : ''}`}>
-      <audio
-        ref={audioRef}
-        src={`${API_BASE_URL}${message.attachment_url}`}
-        preload="metadata"
-      />
-      
-      <div className="voice-player-container">
-        <div className="voice-controls">
-          <button 
-            className="play-pause-btn"
-            onClick={togglePlayPause}
-            title={isPlaying ? 'Пауза' : 'Воспроизвести'}
-          >
-            {isPlaying ? (
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-                <rect x="6" y="4" width="4" height="16"/>
-                <rect x="14" y="4" width="4" height="16"/>
-              </svg>
-            ) : (
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M8 5v14l11-7z"/>
-              </svg>
-            )}
-          </button>
-
-          <div 
-            ref={progressRef}
-            className="voice-progress"
-            onClick={handleProgressClick}
-          >
             <div 
-              className="progress-bar"
-              style={{ width: `${progressPercent}%` }}
-            />
+              ref={progressRef}
+              className="voice-progress"
+              onClick={handleProgressClick}
+            >
+              <div 
+                className="progress-bar"
+                style={{ width: `${progressPercent}%` }}
+              />
+            </div>
           </div>
-        </div>
 
-        <div className="voice-time">
-          <span className="current-time">{formatTime(currentTime)}</span>
-          <span className="duration">{formatTime(duration)}</span>
+          <div className="voice-time">
+            <span className="current-time">{formatTime(currentTime)}</span>
+            <span className="duration">{formatTime(duration)}</span>
+          </div>
         </div>
       </div>
-    </div>
-  );
-};
+    );
+  };
 
   const renderMessageContent = (message) => {
-  switch (message.message_type) {
-    case 'voice':
-      return (
-        <VoiceMessagePlayer 
-          message={message}
-          currentUser={currentUser}
-          API_BASE_URL={API_BASE_URL}
-        />
-      );
-      
-    case 'video':
-      return (
-        <div className="message-media">
-          <video 
-            controls 
-            className="message-video"
-            poster={message.video_thumbnail ? `${API_BASE_URL}${message.video_thumbnail}` : undefined}
-          >
-            <source src={`${API_BASE_URL}${message.attachment_url}`} type="video/mp4" />
-            Ваш браузер не поддерживает видео.
-          </video>
-        </div>
-      );
-    
-    case 'file':
-    case 'image':
-      const fileName = message.original_filename || message.content;
-      const fileIcon = getFileIcon(message.file_type || '', fileName);
-      const fileTypeText = getFileTypeText(message.file_type || '', fileName);
-      
-      if (message.message_type === 'image') {
+    switch (message.message_type) {
+      case 'voice':
+        return (
+          <VoiceMessagePlayer 
+            message={message}
+            currentUser={currentUser}
+            API_BASE_URL={API_BASE_URL}
+          />
+        );
+        
+      case 'video':
         return (
           <div className="message-media">
-            <img 
-              src={`${API_BASE_URL}${message.attachment_url}`} 
-              alt={fileName}
-              className="message-image"
-              onClick={() => window.open(`${API_BASE_URL}${message.attachment_url}`, '_blank')}
-            />
+            <video 
+              controls 
+              className="message-video"
+              poster={message.video_thumbnail ? `${API_BASE_URL}${message.video_thumbnail}` : undefined}
+            >
+              <source src={`${API_BASE_URL}${message.attachment_url}`} type="video/mp4" />
+              Ваш браузер не поддерживает видео.
+            </video>
           </div>
         );
-      }
       
-      return (
-        <div className="message-file">
-          <div className="file-icon" title={fileTypeText}>
-            {fileIcon}
+      case 'file':
+      case 'image':
+        const fileName = message.original_filename || message.content;
+        const fileIcon = getFileIcon(message.file_type || '', fileName);
+        const fileTypeText = getFileTypeText(message.file_type || '', fileName);
+        
+        if (message.message_type === 'image') {
+          return (
+            <div className="message-media">
+              <img 
+                src={`${API_BASE_URL}${message.attachment_url}`} 
+                alt={fileName}
+                className="message-image"
+                onClick={() => window.open(`${API_BASE_URL}${message.attachment_url}`, '_blank')}
+              />
+            </div>
+          );
+        }
+        
+        return (
+          <div className="message-file">
+            <div className="file-icon" title={fileTypeText}>
+              {fileIcon}
+            </div>
+            <div className="file-info">
+              <div className="file-name">{fileName}</div>
+              <div className="file-type">{fileTypeText}</div>
+              {message.file_size && (
+                <div className="file-size">
+                  {(message.file_size / 1024 / 1024).toFixed(2)} MB
+                </div>
+              )}
+            </div>
+            <a 
+              href={`${API_BASE_URL}${message.attachment_url}`} 
+              download={fileName}
+              className="file-download-btn"
+              title="Скачать файл"
+            >
+              ⬇️
+            </a>
           </div>
-          <div className="file-info">
-            <div className="file-name">{fileName}</div>
-            <div className="file-type">{fileTypeText}</div>
-            {message.file_size && (
-              <div className="file-size">
-                {(message.file_size / 1024 / 1024).toFixed(2)} MB
-              </div>
-            )}
-          </div>
-          <a 
-            href={`${API_BASE_URL}${message.attachment_url}`} 
-            download={fileName}
-            className="file-download-btn"
-            title="Скачать файл"
-          >
-            ⬇️
-          </a>
-        </div>
-      );
-    
-    default:
-      return <div className="message-text">{message.content}</div>;
-  }
-};
+        );
+      
+      default:
+        return <div className="message-text">{message.content}</div>;
+    }
+  };
 
   const groupMessagesByDate = (messages) => {
     const groups = [];
@@ -849,6 +1019,7 @@ const Messenger = ({ currentUser }) => {
                       <div 
                         key={item.message_id}
                         className={`message ${item.is_own ? 'own' : 'other'} ${item.is_sending ? 'sending' : ''}`}
+                        onContextMenu={(e) => handleContextMenu(e, item)}
                       >
                         {!item.is_own && (
                           <div className="message-avatar">
@@ -861,11 +1032,37 @@ const Messenger = ({ currentUser }) => {
                               {item.user_name}
                             </div>
                           )}
-                          {renderMessageContent(item)}
-                          <div className="message-time">
-                            {formatTime(item.created_at)}
-                            {item.is_sending && <span className="sending-indicator">...</span>}
-                          </div>
+                          
+                          {/* Блок редактирования */}
+                          {editingMessage?.message_id === item.message_id ? (
+                            <div className="message-edit">
+                              <textarea
+                                value={editText}
+                                onChange={(e) => setEditText(e.target.value)}
+                                onKeyDown={handleEditKeyPress}
+                                className="edit-textarea"
+                                autoFocus
+                                rows={Math.min(5, Math.max(1, editText.split('\n').length))}
+                              />
+                              <div className="edit-actions">
+                                <button onClick={saveEditedMessage} className="save-edit-btn">
+                                  Сохранить
+                                </button>
+                                <button onClick={cancelEditing} className="cancel-edit-btn">
+                                  Отмена
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <>
+                              {renderMessageContent(item)}
+                              <div className="message-time">
+                                {formatTime(item.created_at)}
+                                {item.is_edited && <span className="edited-indicator"> (изменено)</span>}
+                                {item.is_sending && <span className="sending-indicator">...</span>}
+                              </div>
+                            </>
+                          )}
                         </div>
                       </div>
                     );
@@ -996,6 +1193,27 @@ const Messenger = ({ currentUser }) => {
           </div>
         )}
       </div>
+
+      {/* Контекстное меню для сообщений */}
+      {contextMenu && (
+        <div 
+          className="context-menu"
+          style={{
+            position: 'fixed',
+            left: contextMenu.x,
+            top: contextMenu.y,
+            zIndex: 1000
+          }}
+          onClick={(e) => e.stopPropagation()} // Предотвращаем закрытие при клике на меню
+        >
+          <div className="context-menu-item" onClick={() => startEditing(contextMenu.message)}>
+            ✏️ Редактировать
+          </div>
+          <div className="context-menu-item delete" onClick={() => deleteMessage(contextMenu.message)}>
+            🗑️ Удалить
+          </div>
+        </div>
+      )}
 
       {showVoiceRecorder && (
         <VoiceRecorder
