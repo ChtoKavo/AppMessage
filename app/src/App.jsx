@@ -7,6 +7,14 @@ import Notifications from './components/Notifications';
 import Friends from './components/Friends';
 import Profile from './components/Profile';
 import AdminPanel from './components/AdminPanel';
+import Fon from '../public/фон.png'
+import Logo from '../public/Лого.png'
+import Friend from '../public/friend.png'
+import Chat from '../public/chat.png'
+import Lenta from '../public/lenta.png'
+import Prof from '../public/Profile.png'
+import Setting from '../public/settings.png'
+import Notification from '../public/nofications.png';
 import './App.css';
 
 function App() {
@@ -16,6 +24,7 @@ function App() {
   const [socket, setSocket] = useState(null);
   const [loading, setLoading] = useState(true);
   const [showAdminPanel, setShowAdminPanel] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   useEffect(() => {
     loadUserFromStorage();
@@ -70,9 +79,15 @@ function App() {
     localStorage.removeItem('currentUser');
     setCurrentUser(null);
     setShowAdminPanel(false);
+    setSidebarOpen(false);
     if (socket) {
       socket.disconnect();
     }
+  };
+
+  const handleTabChange = (tab) => {
+    setActiveTab(tab);
+    setSidebarOpen(false); // Закрываем боковое меню при выборе раздела
   };
 
   const renderContent = () => {
@@ -107,73 +122,123 @@ function App() {
 
   return (
     <div className="App">
+      {/* Фон без размытия */}
+      <div className="background-overlay">
+        <div className="background-image"></div>
+        <div className="background-gradient"></div>
+      </div>
+      
       {currentUser ? (
         <div className="app-container">
-          <header className="app-header">
-            <div className="header-content">
-              <h1>Социальная сеть</h1>
-              <div className="user-info">
-                <span className="welcome-text">
-                  {window.innerWidth > 480 ? `Привет, ${currentUser.name}` : currentUser.name}
-                </span>
+          {/* Упрощенная шапка */}
+          <header className="main-header">
+            <div className="header-container">
+              <div className="header-left">
+                <button 
+                  className="sidebar-toggle"
+                  onClick={() => setSidebarOpen(!sidebarOpen)}
+                >
+                  <span className="toggle-icon">☰</span>
+                  <span className="toggle-text">Меню</span>
+                </button>
+                <div className="header-brand">
+                  <a href="#" className="logo">
+                    <div className="logo-icon"><img src={Logo} alt="" /></div>
+                    <span className="logo-text">Chill Out</span>
+                  </a>
+                </div>
+              </div>
+
+              <div className="header-actions">
+                <div className="user-menu">
+                  <div className="user-item">
+                    <div className="user-avatar">
+                      {currentUser.name ? currentUser.name.charAt(0).toUpperCase() : 'U'}
+                    </div>
+                    <div className="user-info">
+                      <div className="user-name">{currentUser.name}</div>
+                      <div className="user-role">{currentUser.role}</div>
+                    </div>
+                  </div>
+                  
+                  {currentUser.role === 'admin' && (
+                    <button 
+                      className={`admin-btn ${activeTab === 'admin' ? 'active' : ''}`}
+                      onClick={() => handleTabChange('admin')}
+                    >
+                      <span className="admin-icon"><img src={Setting} alt="" /></span>
+                      <span>Админ</span>
+                    </button>
+                  )}
+
+                  <button onClick={handleLogout} className="logout-btn">
+                    <span className="logout-icon">🚪</span>
+                    <span>Выйти</span>
+                  </button>
+                </div>
               </div>
             </div>
           </header>
 
-          <div className="app-main">
-            <nav className="app-nav">
-              <button 
-                className={`nav-btn ${activeTab === 'feed' ? 'active' : ''}`}
-                onClick={() => setActiveTab('feed')}
-              >
-                📰 Лента
-              </button>
-              <button 
-                className={`nav-btn ${activeTab === 'messenger' ? 'active' : ''}`}
-                onClick={() => setActiveTab('messenger')}
-              >
-                💬 Мессенджер
-              </button>
-              <button 
-                className={`nav-btn ${activeTab === 'friends' ? 'active' : ''}`}
-                onClick={() => setActiveTab('friends')}
-              >
-                👥 Друзья
-              </button>
-              <button 
-                className={`nav-btn ${activeTab === 'notifications' ? 'active' : ''}`}
-                onClick={() => setActiveTab('notifications')}
-              >
-                🔔 Уведомления
-              </button>
-              <button 
-                className={`nav-btn ${activeTab === 'profile' ? 'active' : ''}`}
-                onClick={() => setActiveTab('profile')}
-              >
-                👤 Профиль
-              </button>
-              
-              {/* Кнопка админ-панели в навигации для администраторов */}
-              {currentUser.role === 'admin' && (
-                <button 
-                  className={`nav-btn admin-btn ${activeTab === 'admin' ? 'active' : ''}`}
-                  onClick={() => setActiveTab('admin')}
-                >
-                  ⚙️ Админ-панель
-                </button>
-
-                
-              )}
-
-              <button onClick={handleLogout} className="logout-button">
-                  {window.innerWidth > 480 ? 'Выйти' : '🚪'}
-                </button>
-            </nav>
-
-            <main className="app-content">
-              {renderContent()}
-            </main>
+          {/* Боковое меню как отдельное окно */}
+          <div className={`sidebar-overlay ${sidebarOpen ? 'active' : ''}`} 
+               onClick={() => setSidebarOpen(false)}>
           </div>
+          
+          <aside className={`sidebar ${sidebarOpen ? 'active' : ''}`}>
+            <div className="sidebar-header">
+              <h3>Навигация</h3>
+              <button 
+                className="sidebar-close"
+                onClick={() => setSidebarOpen(false)}
+              >
+                ×
+              </button>
+            </div>
+            
+            <nav className="sidebar-nav">
+              <button 
+                className={`sidebar-item ${activeTab === 'feed' ? 'active' : ''}`}
+                onClick={() => handleTabChange('feed')}
+              >
+                <span className="sidebar-icon"><img src={Lenta} alt="" /></span>
+                <span className="sidebar-label">Лента</span>
+              </button>
+              <button 
+                className={`sidebar-item ${activeTab === 'messenger' ? 'active' : ''}`}
+                onClick={() => handleTabChange('messenger')}
+              >
+                <span className="sidebar-icon"><img src={Chat} alt="" /></span>
+                <span className="sidebar-label">Мессенджер</span>
+              </button>
+              <button 
+                className={`sidebar-item ${activeTab === 'friends' ? 'active' : ''}`}
+                onClick={() => handleTabChange('friends')}
+              >
+                <span className="sidebar-icon"><img src={Friend} alt="" /></span>
+                <span className="sidebar-label">Друзья</span>
+              </button>
+              <button 
+                className={`sidebar-item ${activeTab === 'notifications' ? 'active' : ''}`}
+                onClick={() => handleTabChange('notifications')}
+              >
+                <span className="sidebar-icon"><img src={Notification} alt="" /></span>
+                <span className="sidebar-label">Уведомления</span>
+              </button>
+              <button 
+                className={`sidebar-item ${activeTab === 'profile' ? 'active' : ''}`}
+                onClick={() => handleTabChange('profile')}
+              >
+                <span className="sidebar-icon"><img src={Prof} alt="" /></span>
+                <span className="sidebar-label">Профиль</span>
+              </button>
+            </nav>
+          </aside>
+
+          {/* Основной контент */}
+          <main className="main-content">
+            {renderContent()}
+          </main>
         </div>
       ) : showRegister ? (
         <Register 
