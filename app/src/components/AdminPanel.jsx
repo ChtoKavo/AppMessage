@@ -1,3 +1,4 @@
+// AdminPanel.js - полная версия со скроллингом
 import React, { useState, useEffect } from 'react';
 import './AdminPanel.css';
 
@@ -14,97 +15,95 @@ const AdminPanel = ({ currentUser, onBack }) => {
   }, [activeTab]);
 
   const loadData = async () => {
-  try {
-    setLoading(true);
-    setError('');
-    
-    console.log(`Загрузка данных для вкладки: ${activeTab}`);
-    
-    switch (activeTab) {
-      case 'users':
-        const usersResponse = await fetch('http://localhost:5001/admin/users');
-        if (!usersResponse.ok) {
-          const errorData = await usersResponse.json().catch(() => ({ error: 'Unknown error' }));
-          throw new Error(`Ошибка загрузки пользователей: ${usersResponse.status} - ${errorData.error}`);
-        }
-        const usersData = await usersResponse.json();
-        console.log('Загружены пользователи:', usersData.length);
-        setUsers(usersData);
-        break;
-        
-      case 'posts':
-        // Пробуем сначала упрощенный endpoint
-        const postsResponse = await fetch('http://localhost:5001/admin/posts-simple');
-        if (!postsResponse.ok) {
-          // Если упрощенный не работает, пробуем основной
-          const fallbackResponse = await fetch('http://localhost:5001/admin/posts?limit=100');
-          if (!fallbackResponse.ok) {
-            const errorData = await fallbackResponse.json().catch(() => ({ error: 'Unknown error' }));
-            throw new Error(`Ошибка загрузки постов: ${fallbackResponse.status} - ${errorData.error}`);
+    try {
+      setLoading(true);
+      setError('');
+      
+      console.log(`Загрузка данных для вкладки: ${activeTab}`);
+      
+      switch (activeTab) {
+        case 'users':
+          const usersResponse = await fetch('http://localhost:5001/admin/users');
+          if (!usersResponse.ok) {
+            const errorData = await usersResponse.json().catch(() => ({ error: 'Unknown error' }));
+            throw new Error(`Ошибка загрузки пользователей: ${usersResponse.status} - ${errorData.error}`);
           }
-          const fallbackData = await fallbackResponse.json();
-          console.log('Загружены посты через fallback:', fallbackData.length);
-          setPosts(Array.isArray(fallbackData) ? fallbackData : []);
-        } else {
-          const postsData = await postsResponse.json();
-          console.log('Загружены посты через simplified:', postsData.length);
-          setPosts(Array.isArray(postsData) ? postsData : []);
-        }
-        break;
-        
-      case 'statistics':
-        const statsResponse = await fetch('http://localhost:5001/admin/statistics');
-        if (!statsResponse.ok) {
-          const errorData = await statsResponse.json().catch(() => ({ error: 'Unknown error' }));
-          throw new Error(`Ошибка загрузки статистики: ${statsResponse.status} - ${errorData.error}`);
-        }
-        const statsData = await statsResponse.json();
-        console.log('Загружена статистика:', statsData);
-        setStatistics(statsData);
-        break;
-        
-      default:
-        break;
-    }
-  } catch (error) {
-    console.error('Ошибка загрузки данных:', error);
-    setError(error.message);
-  } finally {
-    setLoading(false);
-  }
-};
-  const handleDeleteUser = async (userId) => {
-  if (!window.confirm('Вы уверены, что хотите удалить этого пользователя?')) {
-    return;
-  }
-
-  try {
-    // Используем query параметр вместо заголовка
-    const response = await fetch(`http://localhost:5001/admin/users/${userId}?current_user_id=${currentUser.user_id}`, {
-      method: 'DELETE',
-      headers: {
-        'Content-Type': 'application/json',
+          const usersData = await usersResponse.json();
+          console.log('Загружены пользователи:', usersData.length);
+          setUsers(usersData);
+          break;
+          
+        case 'posts':
+          const postsResponse = await fetch('http://localhost:5001/admin/posts-simple');
+          if (!postsResponse.ok) {
+            const fallbackResponse = await fetch('http://localhost:5001/admin/posts?limit=100');
+            if (!fallbackResponse.ok) {
+              const errorData = await fallbackResponse.json().catch(() => ({ error: 'Unknown error' }));
+              throw new Error(`Ошибка загрузки постов: ${fallbackResponse.status} - ${errorData.error}`);
+            }
+            const fallbackData = await fallbackResponse.json();
+            console.log('Загружены посты через fallback:', fallbackData.length);
+            setPosts(Array.isArray(fallbackData) ? fallbackData : []);
+          } else {
+            const postsData = await postsResponse.json();
+            console.log('Загружены посты через simplified:', postsData.length);
+            setPosts(Array.isArray(postsData) ? postsData : []);
+          }
+          break;
+          
+        case 'statistics':
+          const statsResponse = await fetch('http://localhost:5001/admin/statistics');
+          if (!statsResponse.ok) {
+            const errorData = await statsResponse.json().catch(() => ({ error: 'Unknown error' }));
+            throw new Error(`Ошибка загрузки статистики: ${statsResponse.status} - ${errorData.error}`);
+          }
+          const statsData = await statsResponse.json();
+          console.log('Загружена статистика:', statsData);
+          setStatistics(statsData);
+          break;
+          
+        default:
+          break;
       }
-    });
+    } catch (error) {
+      console.error('Ошибка загрузки данных:', error);
+      setError(error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
 
-    if (!response.ok) {
+  const handleDeleteUser = async (userId) => {
+    if (!window.confirm('Вы уверены, что хотите удалить этого пользователя?')) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`http://localhost:5001/admin/users/${userId}?current_user_id=${currentUser.user_id}`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      });
+
+      if (!response.ok) {
+        const result = await response.json();
+        throw new Error(result.error || `HTTP error! status: ${response.status}`);
+      }
+
       const result = await response.json();
-      throw new Error(result.error || `HTTP error! status: ${response.status}`);
-    }
 
-    const result = await response.json();
-
-    if (result.success) {
-      setUsers(users.filter(user => user.user_id !== userId));
-      alert('Пользователь успешно удален');
-    } else {
-      alert(`Ошибка при удалении пользователя: ${result.error}`);
+      if (result.success) {
+        setUsers(users.filter(user => user.user_id !== userId));
+        alert('Пользователь успешно удален');
+      } else {
+        alert(`Ошибка при удалении пользователя: ${result.error}`);
+      }
+    } catch (error) {
+      console.error('Ошибка удаления пользователя:', error);
+      alert(`Ошибка при удалении пользователя: ${error.message}`);
     }
-  } catch (error) {
-    console.error('Ошибка удаления пользователя:', error);
-    alert(`Ошибка при удалении пользователя: ${error.message}`);
-  }
-};
+  };
 
   const handleDeletePost = async (postId) => {
     if (!window.confirm('Вы уверены, что хотите удалить этот пост?')) {
