@@ -1,28 +1,27 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
 import io from 'socket.io-client';
 import './Messenger.css';
 import VoiceRecorder from './VoiceRecorder';
 
 const Messenger = ({ currentUser }) => {
+  const { chatId } = useParams();
+  const navigate = useNavigate();
+  
   const [socket, setSocket] = useState(null);
-  const [chats, setChats] = useState([]);
   const [activeChat, setActiveChat] = useState(null);
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState('');
-  const [users, setUsers] = useState([]);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [showUserSearch, setShowUserSearch] = useState(false);
   const [loading, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState('');
   const [onlineUsers, setOnlineUsers] = useState(new Set());
-  const [userStatuses, setUserStatuses] = useState({});
   const [selectedFile, setSelectedFile] = useState(null);
   const [filePreview, setFilePreview] = useState(null);
   const [uploadingFile, setUploadingFile] = useState(false);
   const [showVoiceRecorder, setShowVoiceRecorder] = useState(false);
   
-  // Новые состояния для управления сообщениями
+  // Состояния для управления сообщениями
   const [contextMenu, setContextMenu] = useState(null);
   const [editingMessage, setEditingMessage] = useState(null);
   const [editText, setEditText] = useState('');
@@ -30,11 +29,20 @@ const Messenger = ({ currentUser }) => {
   const messagesEndRef = useRef(null);
   const messageInputRef = useRef(null);
   const fileInputRef = useRef(null);
+  const messagesContainerRef = useRef(null);
 
   const API_BASE_URL = 'http://localhost:5001';
 
-  // Инициализация WebSocket соединения
+  // Загрузка данных чата
   useEffect(() => {
+    if (chatId && currentUser) {
+      loadChatData();
+      loadMessages();
+      setupWebSocket();
+    }
+  }, [chatId, currentUser]);
+
+  const setupWebSocket = () => {
     if (!currentUser) return;
 
     const newSocket = io(API_BASE_URL, {
@@ -44,120 +52,68 @@ const Messenger = ({ currentUser }) => {
     setSocket(newSocket);
     newSocket.emit('register_user', currentUser.user_id.toString());
 
-    return () => {
-      newSocket.close();
-    };
-  }, [currentUser]);
-
-  // Обработчики WebSocket событий
-  useEffect(() => {
-    if (!socket) return;
-
-    const handleNewMessage = (message) => {
-      if (message.chat_id === activeChat?.chat_id) {
+    newSocket.on('new_message', (message) => {
+      if (message.chat_id === parseInt(chatId)) {
         setMessages(prev => [...prev, { 
           ...message, 
           is_own: message.user_id === currentUser.user_id 
         }]);
       }
-      loadChats();
-    };
+    });
 
-    const handleChatCreated = (chat) => {
-      setChats(prev => [chat, ...prev]);
-      setActiveChat(chat);
-      setShowUserSearch(false);
-      setSearchQuery('');
-      setUsers([]);
-      loadMessages(chat.chat_id);
-    };
-
-    const handleMessageError = (errorData) => {
-      setError(errorData.error);
-      setSending(false);
-      setUploadingFile(false);
-    };
-
-    const handleUserOnline = (userId) => {
-      setOnlineUsers(prev => new Set([...prev, userId]));
-    };
-
-    const handleUserOffline = (userId) => {
-      setOnlineUsers(prev => {
-        const newSet = new Set(prev);
-        newSet.delete(userId);
-        return newSet;
-      });
-    };
-
-    const handleOnlineUsersList = (userIds) => {
-      setOnlineUsers(new Set(userIds));
-    };
-
-    const handleMessageUpdated = (updatedMessage) => {
-      if (updatedMessage.chat_id === activeChat?.chat_id) {
+    newSocket.on('message_updated', (updatedMessage) => {
+      if (updatedMessage.chat_id === parseInt(chatId)) {
         setMessages(prev => prev.map(msg => 
           msg.message_id === updatedMessage.message_id 
             ? { ...updatedMessage, is_own: updatedMessage.user_id === currentUser.user_id }
             : msg
         ));
       }
-    };
+    });
 
-    socket.on('new_message', handleNewMessage);
-    socket.on('chat_created', handleChatCreated);
-    socket.on('message_error', handleMessageError);
-    socket.on('user_online', handleUserOnline);
-    socket.on('user_offline', handleUserOffline);
-    socket.on('online_users_list', handleOnlineUsersList);
-    socket.on('message_updated', handleMessageUpdated);
+    newSocket.on('online_users_list', (userIds) => {
+      setOnlineUsers(new Set(userIds));
+    });
+
+    newSocket.on('user_online', (userId) => {
+      setOnlineUsers(prev => new Set([...prev, userId]));
+    });
+
+    newSocket.on('user_offline', (userId) => {
+      setOnlineUsers(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(userId);
+        return newSet;
+      });
+    });
+
+    newSocket.on('message_error', (errorData) => {
+      setError(errorData.error);
+      setSending(false);
+      setUploadingFile(false);
+    });
 
     return () => {
-      socket.off('new_message', handleNewMessage);
-      socket.off('chat_created', handleChatCreated);
-      socket.off('message_error', handleMessageError);
-      socket.off('user_online', handleUserOnline);
-      socket.off('user_offline', handleUserOffline);
-      socket.off('online_users_list', handleOnlineUsersList);
-      socket.off('message_updated', handleMessageUpdated);
+      if (newSocket) {
+        newSocket.close();
+      }
     };
-  }, [socket, activeChat, currentUser]);
+  };
 
-  // Загрузка чатов
-  useEffect(() => {
-    if (currentUser) {
-      loadChats();
-    }
-  }, [currentUser]);
-
-  // Автопрокрутка к новым сообщениям
-  useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
-
-  // Закрытие контекстного меню при клике вне его
-  useEffect(() => {
-    const handleClick = () => closeContextMenu();
-    document.addEventListener('click', handleClick);
-    return () => document.removeEventListener('click', handleClick);
-  }, []);
-
-  const loadChats = async () => {
+  const loadChatData = async () => {
     try {
-      setLoading(true);
       const response = await fetch(`${API_BASE_URL}/chats/${currentUser.user_id}`);
       if (!response.ok) throw new Error('Ошибка загрузки чатов');
-      const data = await response.json();
-      setChats(data);
+      const chats = await response.json();
+      const currentChat = chats.find(chat => chat.chat_id === parseInt(chatId));
+      setActiveChat(currentChat);
     } catch (error) {
-      console.error('Ошибка загрузки чатов:', error);
-      setError('Ошибка загрузки чатов');
-    } finally {
-      setLoading(false);
+      console.error('Ошибка загрузки данных чата:', error);
+      setError('Чат не найден');
     }
   };
 
-  const loadMessages = async (chatId) => {
+  const loadMessages = async () => {
     try {
       setLoading(true);
       const response = await fetch(`${API_BASE_URL}/messages/${chatId}?userId=${currentUser.user_id}`);
@@ -178,85 +134,43 @@ const Messenger = ({ currentUser }) => {
     }
   };
 
-  const searchUsers = async (query) => {
-    if (!query.trim()) {
-      setUsers([]);
-      return;
-    }
+  // Закрытие контекстного меню при клике вне его
+  useEffect(() => {
+    const handleClick = () => closeContextMenu();
+    document.addEventListener('click', handleClick);
+    return () => document.removeEventListener('click', handleClick);
+  }, []);
 
-    try {
-      setLoading(true);
-      const response = await fetch(`${API_BASE_URL}/users/search/${encodeURIComponent(query)}`);
-      if (!response.ok) throw new Error('Ошибка поиска пользователей');
-      const data = await response.json();
-      
-      const filteredUsers = data.filter(user => user.user_id !== currentUser.user_id);
-      setUsers(filteredUsers);
-    } catch (error) {
-      console.error('Ошибка поиска пользователей:', error);
-      setError('Ошибка поиска пользователей');
-    } finally {
-      setLoading(false);
-    }
+  // Автопрокрутка к новым сообщениям
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages]);
+
+  const handleBackToChats = () => {
+    navigate('/chats');
   };
 
-  const createChat = async (participantId) => {
-    try {
-      setLoading(true);
-      
-      const checkResponse = await fetch(
-        `${API_BASE_URL}/chats/check/${currentUser.user_id}/${participantId}`
-      );
-      
-      if (!checkResponse.ok) throw new Error('Ошибка проверки чата');
-      
-      const checkData = await checkResponse.json();
-      
-      if (checkData.exists) {
-        setActiveChat({ chat_id: checkData.chat_id });
-        loadMessages(checkData.chat_id);
-        setShowUserSearch(false);
-        setSearchQuery('');
-        setUsers([]);
-      } else {
-        socket.emit('create_chat', {
-          user_id: currentUser.user_id,
-          participant_id: participantId,
-          chat_type: 'private'
-        });
-      }
-    } catch (error) {
-      console.error('Ошибка создания чата:', error);
-      setError('Ошибка создания чата');
-      setLoading(false);
-    }
-  };
-
-  // Функция для показа контекстного меню с улучшенным позиционированием
+  // Функция для показа контекстного меню
   const handleContextMenu = (e, message) => {
     e.preventDefault();
     
-    // Показываем меню только для своих сообщений
     if (message.is_own && message.message_type === 'text') {
-      const menuWidth = 160; // Примерная ширина меню
-      const menuHeight = 80; // Примерная высота меню
+      const menuWidth = 160;
+      const menuHeight = 80;
       const viewportWidth = window.innerWidth;
       const viewportHeight = window.innerHeight;
       
       let x = e.clientX;
       let y = e.clientY;
       
-      // Корректируем позицию по X (чтобы меню не выходило за правый край)
       if (x + menuWidth > viewportWidth) {
         x = viewportWidth - menuWidth - 10;
       }
       
-      // Корректируем позицию по Y (чтобы меню не выходило за нижний край)
       if (y + menuHeight > viewportHeight) {
         y = viewportHeight - menuHeight - 10;
       }
       
-      // Сдвигаем меню левее курсора для лучшей видимости
       x = Math.max(10, x - menuWidth / 2);
       
       setContextMenu({
@@ -267,15 +181,12 @@ const Messenger = ({ currentUser }) => {
     }
   };
 
-  // Закрытие контекстного меню
   const closeContextMenu = () => {
     setContextMenu(null);
   };
 
-  // Удаление сообщения
   const deleteMessage = async (message) => {
     try {
-      // Проверяем, что это реальное сообщение из базы данных, а не временное
       if (message.is_sending || typeof message.message_id !== 'number' || message.message_id > 2000000000) {
         console.log('Нельзя удалить временное сообщение или сообщение с неверным ID');
         setError('Нельзя удалить отправляемое сообщение');
@@ -298,7 +209,6 @@ const Messenger = ({ currentUser }) => {
         throw new Error(errorData.error || 'Ошибка удаления сообщения');
       }
 
-      // Удаляем сообщение из локального состояния
       setMessages(prev => prev.filter(msg => msg.message_id !== message.message_id));
       
     } catch (error) {
@@ -309,24 +219,20 @@ const Messenger = ({ currentUser }) => {
     }
   };
 
-  // Начало редактирования сообщения
   const startEditing = (message) => {
     setEditingMessage(message);
     setEditText(message.content);
     closeContextMenu();
   };
 
-  // Отмена редактирования
   const cancelEditing = () => {
     setEditingMessage(null);
     setEditText('');
   };
 
-  // Сохранение отредактированного сообщения
   const saveEditedMessage = async () => {
     if (!editText.trim() || !editingMessage) return;
 
-    // Проверяем, что это реальное сообщение из базы данных
     if (editingMessage.is_sending || typeof editingMessage.message_id !== 'number' || editingMessage.message_id > 2000000000) {
       console.log('Нельзя редактировать временное сообщение');
       setError('Нельзя редактировать отправляемое сообщение');
@@ -353,7 +259,6 @@ const Messenger = ({ currentUser }) => {
 
       const updatedMessage = await response.json();
 
-      // Обновляем сообщение в локальном состоянии
       setMessages(prev => prev.map(msg => 
         msg.message_id === editingMessage.message_id 
           ? { ...msg, content: updatedMessage.content, is_edited: true }
@@ -368,7 +273,6 @@ const Messenger = ({ currentUser }) => {
     }
   };
 
-  // Обработчик клавиш при редактировании
   const handleEditKeyPress = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
@@ -395,7 +299,6 @@ const Messenger = ({ currentUser }) => {
       
       const fileContent = getFileTypeText(file.type, file.name);
 
-      // Временное сообщение
       const tempMessage = {
         message_id: Date.now(),
         chat_id: activeChat.chat_id,
@@ -500,22 +403,25 @@ const Messenger = ({ currentUser }) => {
     return '📎';
   };
 
-  const getFileTypeText = (fileType, fileName = '') => {
-    if (fileType.startsWith('image/')) return 'Изображение';
-    if (fileType.startsWith('video/')) return 'Видео';
-    if (fileType === 'application/pdf') return 'PDF документ';
-    
-    const ext = fileName.split('.').pop()?.toLowerCase();
-    const extensionMap = {
-      'doc': 'Документ Word', 'docx': 'Документ Word',
-      'xls': 'Таблица Excel', 'xlsx': 'Таблица Excel',
-      'ppt': 'Презентация', 'pptx': 'Презентация',
-      'zip': 'Архив', 'rar': 'Архив',
-      'txt': 'Текстовый файл', 'csv': 'CSV файл'
-    };
-    
-    return extensionMap[ext] || 'Файл';
+ const getFileTypeText = (fileType, fileName = '') => {
+  if (fileType.startsWith('image/')) return 'Изображение';
+  if (fileType.startsWith('video/')) return 'Видео';
+  if (fileType === 'application/pdf') return 'PDF документ';
+  
+  const ext = fileName.split('.').pop()?.toLowerCase();
+  const extensionMap = {
+    'jpg': 'Изображение', 'jpeg': 'Изображение', 'png': 'Изображение', 
+    'gif': 'Изображение', 'webp': 'Изображение', 'bmp': 'Изображение',
+    'mp4': 'Видео', 'avi': 'Видео', 'mov': 'Видео', 'wmv': 'Видео',
+    'doc': 'Документ Word', 'docx': 'Документ Word',
+    'xls': 'Таблица Excel', 'xlsx': 'Таблица Excel',
+    'ppt': 'Презентация', 'pptx': 'Презентация',
+    'zip': 'Архив', 'rar': 'Архив', '7z': 'Архив',
+    'txt': 'Текстовый файл', 'csv': 'CSV файл'
   };
+  
+  return extensionMap[ext] || 'Файл';
+};
 
   const sendMessage = async (e) => {
     e.preventDefault();
@@ -763,23 +669,25 @@ const Messenger = ({ currentUser }) => {
         );
       
       case 'file':
-      case 'image':
-        const fileName = message.original_filename || message.content;
-        const fileIcon = getFileIcon(message.file_type || '', fileName);
-        const fileTypeText = getFileTypeText(message.file_type || '', fileName);
-        
-        if (message.message_type === 'image') {
-          return (
-            <div className="message-media">
-              <img 
-                src={`${API_BASE_URL}${message.attachment_url}`} 
-                alt={fileName}
-                className="message-image"
-                onClick={() => window.open(`${API_BASE_URL}${message.attachment_url}`, '_blank')}
-              />
-            </div>
-          );
-        }
+     case 'image':
+  return (
+    <div className="message-media">
+      <img 
+        src={`${API_BASE_URL}${message.attachment_url}`} 
+        alt={message.original_filename || 'Изображение'}
+        className="message-image"
+        onClick={() => window.open(`${API_BASE_URL}${message.attachment_url}`, '_blank')}
+        onError={(e) => {
+          // Fallback если изображение не загружается
+          e.target.style.display = 'none';
+          const fallback = document.createElement('div');
+          fallback.className = 'file-fallback';
+          fallback.textContent = '🖼️ ' + (message.original_filename || 'Изображение');
+          e.target.parentNode.appendChild(fallback);
+        }}
+      />
+    </div>
+  );
         
         return (
           <div className="message-file">
@@ -848,351 +756,218 @@ const Messenger = ({ currentUser }) => {
     );
   }
 
+  if (!activeChat) {
+    return (
+      <div className="messenger">
+        <div className="loading">Загрузка чата...</div>
+      </div>
+    );
+  }
+
   return (
     <div className="messenger">
-      <div className="chat-sidebar">
-        <div className="sidebar-header">
-          <div className="current-user-info">
-            <div className="avatar small">
-              <div className="avatar-fallback">
-                {currentUser.name ? currentUser.name.charAt(0).toUpperCase() : 'U'}
-              </div>
-            </div>
-            <span className="current-user-name">{currentUser.name}</span>
+      <div className="chat-header">
+        <button className="back-button" onClick={handleBackToChats}>
+          ← Назад к чатам
+        </button>
+        
+        <div className="chat-header-info">
+          <div className="chat-avatar">
+            {getOtherParticipants(activeChat).split(',')[0].charAt(0).toUpperCase()}
           </div>
-          <button 
-            className="new-chat-btn"
-            onClick={() => setShowUserSearch(true)}
-            title="Новый чат"
-          >
-            <span>+</span>
-          </button>
+          <div className="chat-user-info">
+            <h3>{getOtherParticipants(activeChat)}</h3>
+            <span className="online-status">
+              {onlineUsers.has(activeChat.participant_id) ? 'В сети' : 'Не в сети'}
+            </span>
+          </div>
         </div>
+      </div>
 
-        {showUserSearch && (
-          <div className="user-search">
-            <div className="search-header">
-              <h4>Новый чат</h4>
-              <button 
-                className="close-search"
-                onClick={() => {
-                  setShowUserSearch(false);
-                  setSearchQuery('');
-                  setUsers([]);
-                }}
-              >
-                ×
-              </button>
-            </div>
-            <input
-              type="text"
-              placeholder="Поиск пользователей..."
-              value={searchQuery}
-              onChange={(e) => {
-                setSearchQuery(e.target.value);
-                searchUsers(e.target.value);
-              }}
-              className="search-input"
-              autoFocus
-            />
-            
-            <div className="search-results">
-              {loading ? (
-                <div className="loading">Поиск...</div>
-              ) : users.length > 0 ? (
-                users.map(user => (
-                  <div 
-                    key={user.user_id}
-                    className="user-result"
-                    onClick={() => createChat(user.user_id)}
-                  >
-                    <div className="user-avatar">
-                      {user.name ? user.name.charAt(0).toUpperCase() : 'U'}
+      <div className="messages-container" ref={messagesContainerRef}>
+        {loading && messages.length === 0 ? (
+          <div className="loading">Загрузка сообщений...</div>
+        ) : messages.length === 0 ? (
+          <div className="no-messages">
+            <p>Нет сообщений</p>
+            <span>Начните общение первым!</span>
+          </div>
+        ) : (
+          <div className="messages-list">
+            {messageGroups.map(item => {
+              if (item.type === 'date') {
+                return (
+                  <div key={item.id} className="date-divider">
+                    <span>{formatDate(item.date)}</span>
+                  </div>
+                );
+              }
+              
+              return (
+                <div 
+                  key={item.message_id}
+                  className={`message ${item.is_own ? 'own' : 'other'} ${item.is_sending ? 'sending' : ''}`}
+                  onContextMenu={(e) => handleContextMenu(e, item)}
+                >
+                  {!item.is_own && (
+                    <div className="message-avatar">
+                      {item.user_name?.charAt(0).toUpperCase()}
                     </div>
-                    <div className="user-info">
-                      <div className="user-name">{user.name}</div>
-                      <div className="user-email">{user.email}</div>
-                    </div>
-                    <div className="user-status">
-                      {onlineUsers.has(user.user_id) ? (
-                        <span className="online">online</span>
+                  )}
+                  
+                  <div className="message-content-wrapper">
+                    {!item.is_own && (
+                      <div className="message-sender">
+                        {item.user_name}
+                      </div>
+                    )}
+                    
+                    <div className="message-content">
+                      {editingMessage?.message_id === item.message_id ? (
+                        <div className="message-edit">
+                          <textarea
+                            value={editText}
+                            onChange={(e) => setEditText(e.target.value)}
+                            onKeyDown={handleEditKeyPress}
+                            className="edit-textarea"
+                            autoFocus
+                            rows={Math.min(5, Math.max(1, editText.split('\n').length))}
+                          />
+                          <div className="edit-actions">
+                            <button onClick={saveEditedMessage} className="save-edit-btn">
+                              Сохранить
+                            </button>
+                            <button onClick={cancelEditing} className="cancel-edit-btn">
+                              Отмена
+                            </button>
+                          </div>
+                        </div>
                       ) : (
-                        <span className="offline">offline</span>
+                        <>
+                          {renderMessageContent(item)}
+                          <div className="message-time">
+                            {formatTime(item.created_at)}
+                            {item.is_edited && <span className="edited-indicator"> (изменено)</span>}
+                            {item.is_sending && <span className="sending-indicator">...</span>}
+                          </div>
+                        </>
                       )}
                     </div>
                   </div>
-                ))
-              ) : searchQuery.trim() ? (
-                <div className="no-results">Пользователи не найдены</div>
-              ) : null}
-            </div>
+                </div>
+              );
+            })}
+            <div ref={messagesEndRef} />
           </div>
         )}
-
-        <div className="chat-list">
-          {loading && chats.length === 0 ? (
-            <div className="loading">Загрузка чатов...</div>
-          ) : chats.length === 0 ? (
-            <div className="no-chats">
-              <p>У вас пока нет чатов</p>
-              <button 
-                onClick={() => setShowUserSearch(true)}
-                className="start-chat-btn"
-              >
-                Начать общение
-              </button>
-            </div>
-          ) : (
-            chats.map(chat => (
-              <div 
-                key={chat.chat_id}
-                className={`chat-item ${activeChat?.chat_id === chat.chat_id ? 'active' : ''}`}
-                onClick={() => {
-                  setActiveChat(chat);
-                  loadMessages(chat.chat_id);
-                }}
-              >
-                <div className="chat-avatar">
-                  {getOtherParticipants(chat).split(',')[0].charAt(0).toUpperCase()}
-                </div>
-                <div className="chat-info">
-                  <div className="chat-name">
-                    {getOtherParticipants(chat)}
-                  </div>
-                  <div className="last-message">
-                    {chat.last_message ? 
-                      (chat.last_message.length > 30 
-                        ? chat.last_message.substring(0, 30) + '...' 
-                        : chat.last_message)
-                      : 'Нет сообщений'
-                    }
-                  </div>
-                </div>
-                {chat.last_message_time && (
-                  <div className="chat-time">
-                    {formatDate(chat.last_message_time)}
-                  </div>
-                )}
-              </div>
-            ))
-          )}
-        </div>
       </div>
 
-      <div className="chat-main">
-        {activeChat ? (
-          <>
-            <div className="chat-header">
-              <div className="chat-header-info">
-                <div className="chat-avatar">
-                  {getOtherParticipants(activeChat).split(',')[0].charAt(0).toUpperCase()}
-                </div>
-                <div>
-                  <h3>{getOtherParticipants(activeChat)}</h3>
-                  <span className="online-status">
-                    {onlineUsers.has(activeChat.participant_id) ? 'online' : 'offline'}
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            <div className="messages-container">
-              {loading && messages.length === 0 ? (
-                <div className="loading">Загрузка сообщений...</div>
-              ) : messages.length === 0 ? (
-                <div className="no-messages">
-                  <p>Нет сообщений</p>
-                  <span>Начните общение первым!</span>
-                </div>
+      <form className="message-input-form" onSubmit={sendMessage}>
+        {selectedFile && (
+          <div className="file-preview">
+            <div className="file-preview-content">
+              {filePreview ? (
+                filePreview.startsWith('data:image') ? (
+                  <img src={filePreview} alt="Preview" className="file-preview-image" />
+                ) : filePreview.startsWith('blob:') ? (
+                  <video src={filePreview} className="file-preview-video" controls />
+                ) : null
               ) : (
-                <div className="messages-list">
-                  {messageGroups.map(item => {
-                    if (item.type === 'date') {
-                      return (
-                        <div key={item.id} className="date-divider">
-                          <span>{formatDate(item.date)}</span>
-                        </div>
-                      );
-                    }
-                    
-                    return (
-                      <div 
-                        key={item.message_id}
-                        className={`message ${item.is_own ? 'own' : 'other'} ${item.is_sending ? 'sending' : ''}`}
-                        onContextMenu={(e) => handleContextMenu(e, item)}
-                      >
-                        {!item.is_own && (
-                          <div className="message-avatar">
-                            {item.user_name?.charAt(0).toUpperCase()}
-                          </div>
-                        )}
-                        <div className="message-content">
-                          {!item.is_own && (
-                            <div className="message-sender">
-                              {item.user_name}
-                            </div>
-                          )}
-                          
-                          {/* Блок редактирования */}
-                          {editingMessage?.message_id === item.message_id ? (
-                            <div className="message-edit">
-                              <textarea
-                                value={editText}
-                                onChange={(e) => setEditText(e.target.value)}
-                                onKeyDown={handleEditKeyPress}
-                                className="edit-textarea"
-                                autoFocus
-                                rows={Math.min(5, Math.max(1, editText.split('\n').length))}
-                              />
-                              <div className="edit-actions">
-                                <button onClick={saveEditedMessage} className="save-edit-btn">
-                                  Сохранить
-                                </button>
-                                <button onClick={cancelEditing} className="cancel-edit-btn">
-                                  Отмена
-                                </button>
-                              </div>
-                            </div>
-                          ) : (
-                            <>
-                              {renderMessageContent(item)}
-                              <div className="message-time">
-                                {formatTime(item.created_at)}
-                                {item.is_edited && <span className="edited-indicator"> (изменено)</span>}
-                                {item.is_sending && <span className="sending-indicator">...</span>}
-                              </div>
-                            </>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                  <div ref={messagesEndRef} />
+                <div className="file-preview-icon">
+                  {getFileIcon(selectedFile.type, selectedFile.name)}
                 </div>
               )}
-            </div>
-
-            <form className="message-input-form" onSubmit={sendMessage}>
-              {selectedFile && (
-                <div className="file-preview">
-                  <div className="file-preview-content">
-                    {filePreview ? (
-                      filePreview.startsWith('data:image') ? (
-                        <img src={filePreview} alt="Preview" className="file-preview-image" />
-                      ) : filePreview.startsWith('blob:') ? (
-                        <video src={filePreview} className="file-preview-video" controls />
-                      ) : null
-                    ) : (
-                      <div className="file-preview-icon">
-                        {getFileIcon(selectedFile.type, selectedFile.name)}
-                      </div>
-                    )}
-                    <div className="file-preview-info">
-                      <div className="file-name">{selectedFile.name}</div>
-                      <div className="file-type">{getFileTypeText(selectedFile.type, selectedFile.name)}</div>
-                      <div className="file-size">
-                        {(selectedFile.size / 1024 / 1024).toFixed(2)} MB
-                      </div>
-                    </div>
-                  </div>
-                  <div className="file-preview-actions">
-                    <button 
-                      type="button" 
-                      onClick={confirmFileSend}
-                      disabled={uploadingFile}
-                      className="send-file-btn"
-                    >
-                      {uploadingFile ? 'Отправка...' : 'Отправить'}
-                    </button>
-                    <button 
-                      type="button" 
-                      onClick={cancelFileSend}
-                      disabled={uploadingFile}
-                      className="cancel-file-btn"
-                    >
-                      Отмена
-                    </button>
-                  </div>
+              <div className="file-preview-info">
+                <div className="file-name">{selectedFile.name}</div>
+                <div className="file-type">{getFileTypeText(selectedFile.type, selectedFile.name)}</div>
+                <div className="file-size">
+                  {(selectedFile.size / 1024 / 1024).toFixed(2)} MB
                 </div>
-              )}
-
-              <div className="input-container">
-                <input
-                  type="file"
-                  ref={fileInputRef}
-                  onChange={handleFileSelect}
-                  accept="image/*,video/*,.pdf,.doc,.docx,.txt,.zip,.rar"
-                  style={{ display: 'none' }}
-                />
-                
-                <button 
-                  type="button"
-                  className="attach-file-btn"
-                  onClick={() => fileInputRef.current?.click()}
-                  title="Прикрепить файл"
-                  disabled={uploadingFile || sending || selectedFile}
-                >
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M16.5 6v11.5c0 2.21-1.79 4-4 4s-4-1.79-4-4V5c0-1.38 1.12-2.5 2.5-2.5s2.5 1.12 2.5 2.5v10.5c0 .55-.45 1-1 1s-1-.45-1-1V6H10v9.5c0 1.38 1.12 2.5 2.5 2.5s2.5-1.12 2.5-2.5V5c0-2.21-1.79-4-4-4S7 2.79 7 5v12.5c0 3.04 2.46 5.5 5.5 5.5s5.5-2.46 5.5-5.5V6h-1.5z"/>
-                  </svg>
-                </button>
-
-                <button 
-                  type="button"
-                  className="voice-message-btn"
-                  onClick={() => setShowVoiceRecorder(true)}
-                  title="Голосовое сообщение"
-                  disabled={uploadingFile || sending || selectedFile}
-                >
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/>
-                    <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/>
-                  </svg>
-                </button>
-
-                <input
-                  ref={messageInputRef}
-                  type="text"
-                  value={newMessage}
-                  onChange={(e) => setNewMessage(e.target.value)}
-                  onKeyPress={handleKeyPress}
-                  placeholder="Введите сообщение..."
-                  className="message-input"
-                  disabled={sending || uploadingFile || selectedFile}
-                />
-
-                <button 
-                  type="submit" 
-                  className={`send-button ${sending ? 'sending' : ''}`}
-                  disabled={(!newMessage.trim() && !selectedFile) || sending || uploadingFile}
-                  title="Отправить сообщение"
-                >
-                  {sending ? (
-                    <div className="spinner"></div>
-                  ) : (
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-                      <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
-                    </svg>
-                  )}
-                </button>
               </div>
-            </form>
-          </>
-        ) : (
-          <div className="no-chat-selected">
-            <div className="welcome-message">
-              <h3>Добро пожаловать в мессенджер!</h3>
-              <p>Выберите чат для начала общения или создайте новый</p>
+            </div>
+            <div className="file-preview-actions">
               <button 
-                onClick={() => setShowUserSearch(true)}
-                className="start-chat-btn large"
+                type="button" 
+                onClick={confirmFileSend}
+                disabled={uploadingFile}
+                className="send-file-btn"
               >
-                Начать новый чат
+                {uploadingFile ? 'Отправка...' : 'Отправить'}
+              </button>
+              <button 
+                type="button" 
+                onClick={cancelFileSend}
+                disabled={uploadingFile}
+                className="cancel-file-btn"
+              >
+                Отмена
               </button>
             </div>
           </div>
         )}
-      </div>
+
+        <div className="input-container">
+          <input
+            type="file"
+            ref={fileInputRef}
+            onChange={handleFileSelect}
+            accept="image/*,video/*,.pdf,.doc,.docx,.txt,.zip,.rar"
+            style={{ display: 'none' }}
+          />
+          
+          <button 
+            type="button"
+            className="attach-file-btn"
+            onClick={() => fileInputRef.current?.click()}
+            title="Прикрепить файл"
+            disabled={uploadingFile || sending || selectedFile}
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M16.5 6v11.5c0 2.21-1.79 4-4 4s-4-1.79-4-4V5c0-1.38 1.12-2.5 2.5-2.5s2.5 1.12 2.5 2.5v10.5c0 .55-.45 1-1 1s-1-.45-1-1V6H10v9.5c0 1.38 1.12 2.5 2.5 2.5s2.5-1.12 2.5-2.5V5c0-2.21-1.79-4-4-4S7 2.79 7 5v12.5c0 3.04 2.46 5.5 5.5 5.5s5.5-2.46 5.5-5.5V6h-1.5z"/>
+            </svg>
+          </button>
+
+          {/* Кнопка записи голосового сообщения */}
+          <button 
+            type="button"
+            className="voice-record-btn"
+            onClick={() => setShowVoiceRecorder(true)}
+            title="Записать голосовое сообщение"
+            disabled={sending || uploadingFile || selectedFile}
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/>
+              <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/>
+            </svg>
+          </button>
+
+          <input
+            ref={messageInputRef}
+            type="text"
+            value={newMessage}
+            onChange={(e) => setNewMessage(e.target.value)}
+            onKeyPress={handleKeyPress}
+            placeholder="Написать сообщение..."
+            className="message-input"
+            disabled={sending || uploadingFile || selectedFile}
+          />
+
+          <button 
+            type="submit" 
+            className={`send-button ${sending ? 'sending' : ''}`}
+            disabled={(!newMessage.trim() && !selectedFile) || sending || uploadingFile}
+            title="Отправить сообщение"
+          >
+            {sending ? (
+              <div className="spinner"></div>
+            ) : (
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
+              </svg>
+            )}
+          </button>
+        </div>
+      </form>
 
       {/* Контекстное меню для сообщений */}
       {contextMenu && (
@@ -1204,7 +979,7 @@ const Messenger = ({ currentUser }) => {
             top: contextMenu.y,
             zIndex: 1000
           }}
-          onClick={(e) => e.stopPropagation()} // Предотвращаем закрытие при клике на меню
+          onClick={(e) => e.stopPropagation()}
         >
           <div className="context-menu-item" onClick={() => startEditing(contextMenu.message)}>
             ✏️ Редактировать
