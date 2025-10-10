@@ -26,6 +26,9 @@ const Messenger = ({ currentUser }) => {
   const [editingMessage, setEditingMessage] = useState(null);
   const [editText, setEditText] = useState('');
   
+  // Состояния для аватаров
+  const [participantAvatars, setParticipantAvatars] = useState({});
+  
   const messagesEndRef = useRef(null);
   const messageInputRef = useRef(null);
   const fileInputRef = useRef(null);
@@ -41,6 +44,40 @@ const Messenger = ({ currentUser }) => {
       setupWebSocket();
     }
   }, [chatId, currentUser]);
+
+
+  const loadParticipantAvatars = useCallback(async (chat) => {
+  if (!chat || !chat.participant_ids) return;
+  
+  try {
+    const participantIds = chat.participant_ids.split(',').map(id => parseInt(id.trim()));
+    const avatars = {};
+    
+    for (const participantId of participantIds) {
+      if (participantId === currentUser.user_id) continue;
+      
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/users/${participantId}/avatar`);
+        if (response.ok) {
+          // Получаем бинарные данные аватара
+          const avatarBlob = await response.blob();
+          const avatarUrl = URL.createObjectURL(avatarBlob);
+          avatars[participantId] = avatarUrl;
+        } else {
+          // Если аватар не найден, используем null для заглушки
+          avatars[participantId] = null;
+        }
+      } catch (error) {
+        console.error(`Ошибка загрузки аватара пользователя ${participantId}:`, error);
+        avatars[participantId] = null;
+      }
+    }
+    
+    setParticipantAvatars(avatars);
+  } catch (error) {
+    console.error('Ошибка загрузки аватаров участников:', error);
+  }
+}, [currentUser, API_BASE_URL]);
 
   const setupWebSocket = () => {
     if (!currentUser) return;
@@ -107,6 +144,11 @@ const Messenger = ({ currentUser }) => {
       const chats = await response.json();
       const currentChat = chats.find(chat => chat.chat_id === parseInt(chatId));
       setActiveChat(currentChat);
+      
+      // Загружаем аватары участников после установки активного чата
+      if (currentChat) {
+        loadParticipantAvatars(currentChat);
+      }
     } catch (error) {
       console.error('Ошибка загрузки данных чата:', error);
       setError('Чат не найден');
@@ -148,6 +190,17 @@ const Messenger = ({ currentUser }) => {
 
   const handleBackToChats = () => {
     navigate('/chats');
+  };
+
+  // Функция для получения аватара пользователя
+  const getUserAvatar = (userId, userName = '') => {
+    // Если есть загруженный аватар - используем его
+    if (participantAvatars[userId]) {
+      return participantAvatars[userId];
+    }
+    
+    // Иначе используем заглушку с первой буквой имени
+    return null;
   };
 
   // Функция для показа контекстного меню
@@ -535,6 +588,15 @@ const Messenger = ({ currentUser }) => {
       .join(', ') || 'Пользователь';
   };
 
+  // Функция для получения ID другого участника чата
+  const getOtherParticipantId = (chat) => {
+    if (!chat || !chat.participant_ids) return null;
+    
+    const participantIds = chat.participant_ids.split(',').map(id => parseInt(id.trim()));
+    const otherParticipantId = participantIds.find(id => id !== currentUser.user_id);
+    return otherParticipantId;
+  };
+
   const VoiceMessagePlayer = ({ message, currentUser, API_BASE_URL }) => {
     const [isPlaying, setIsPlaying] = useState(false);
     const [currentTime, setCurrentTime] = useState(0);
@@ -764,6 +826,10 @@ const Messenger = ({ currentUser }) => {
     );
   }
 
+  // Получаем ID другого участника для аватара в заголовке
+  const otherParticipantId = getOtherParticipantId(activeChat);
+  const headerAvatar = getUserAvatar(otherParticipantId);
+
   return (
     <div className="messenger">
       <div className="chat-header">
@@ -773,12 +839,26 @@ const Messenger = ({ currentUser }) => {
         
         <div className="chat-header-info">
           <div className="chat-avatar">
-            {getOtherParticipants(activeChat).split(',')[0].charAt(0).toUpperCase()}
+            {headerAvatar ? (
+              <img 
+                src={headerAvatar} 
+                alt="Аватар" 
+                className="chat-avatar-image"
+                onError={(e) => {
+                  // Если аватар не загружается, показываем заглушку
+                  e.target.style.display = 'none';
+                  e.target.nextSibling.style.display = 'flex';
+                }}
+              />
+            ) : null}
+            <div className="chat-avatar-fallback">
+              {getOtherParticipants(activeChat).split(',')[0].charAt(0).toUpperCase()}
+            </div>
           </div>
           <div className="chat-user-info">
             <h3>{getOtherParticipants(activeChat)}</h3>
             <span className="online-status">
-              {onlineUsers.has(activeChat.participant_id) ? 'В сети' : 'Не в сети'}
+              {onlineUsers.has(otherParticipantId) ? 'В сети' : 'Не в сети'}
             </span>
           </div>
         </div>
@@ -803,6 +883,9 @@ const Messenger = ({ currentUser }) => {
                 );
               }
               
+              // Получаем аватар для этого сообщения
+              const messageAvatar = getUserAvatar(item.user_id, item.user_name);
+              
               return (
                 <div 
                   key={item.message_id}
@@ -811,7 +894,21 @@ const Messenger = ({ currentUser }) => {
                 >
                   {!item.is_own && (
                     <div className="message-avatar">
-                      {item.user_name?.charAt(0).toUpperCase()}
+                      {messageAvatar ? (
+                        <img 
+                          src={messageAvatar} 
+                          alt={item.user_name} 
+                          className="message-avatar-image"
+                          onError={(e) => {
+                            // Если аватар не загружается, показываем заглушку
+                            e.target.style.display = 'none';
+                            e.target.nextSibling.style.display = 'flex';
+                          }}
+                        />
+                      ) : null}
+                      <div className="message-avatar-fallback">
+                        {item.user_name?.charAt(0).toUpperCase()}
+                      </div>
                     </div>
                   )}
                   

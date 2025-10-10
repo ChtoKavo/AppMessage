@@ -59,7 +59,21 @@
       });
 
       // =========================== ОБСЛУЖИВАНИЕ СТАТИЧЕСКИХ ФАЙЛОВ ============================
-  app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+ // Обслуживание статических файлов из uploads
+app.use('/uploads', express.static(path.join(__dirname, 'uploads'), {
+  setHeaders: (res, path) => {
+    // Устанавливаем правильные заголовки для изображений
+    if (path.endsWith('.jpg') || path.endsWith('.jpeg')) {
+      res.setHeader('Content-Type', 'image/jpeg');
+    } else if (path.endsWith('.png')) {
+      res.setHeader('Content-Type', 'image/png');
+    } else if (path.endsWith('.gif')) {
+      res.setHeader('Content-Type', 'image/gif');
+    }
+    // Кэшируем на 1 день
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+  }
+}));
 
       // =========================== НАСТРОЙКА SOCKET.IO ============================
       const io = socketIo(server, {
@@ -2798,6 +2812,7 @@ setInterval(async () => {
       });
 
      // =========================== API ДЛЯ АВАТАРОВ ============================
+// Исправленный endpoint для получения аватара
 app.get('/api/users/:userId/avatar', async (req, res) => {
   try {
     const { userId } = req.params;
@@ -2817,13 +2832,7 @@ app.get('/api/users/:userId/avatar', async (req, res) => {
       return res.status(404).json({ error: 'Файл аватара не найден' });
     }
 
-    // Определяем MIME тип файла
-    const mimeType = getMimeType(avatarPath);
-    
-    // Устанавливаем правильные заголовки
-    res.setHeader('Content-Type', mimeType);
-    res.setHeader('Cache-Control', 'public, max-age=86400'); // Кэшируем на 1 день
-    
+    // Отправляем файл как статический
     res.sendFile(avatarPath);
   } catch (error) {
     console.error('Error getting avatar:', error);
