@@ -1,11 +1,242 @@
 .profile-container {
-  max-width: 800px;
+  max-width: 1200px;
   margin: 0 auto;
-  padding: 20px;
+  padding: 0;
   background: white;
   border-radius: 12px;
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+  max-height: 100vh;
+  overflow-y: auto;
 }
+
+.profile-banner {
+  width: 100%;
+  height: 255px;
+  background: linear-gradient(135deg, #FFA705 0%, #FF8C00 100%);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  position: relative;
+  overflow: visible;
+  padding-bottom: 120px;
+}
+
+.profile-banner::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><defs><pattern id="grain" width="100" height="100" patternUnits="userSpaceOnUse"><circle cx="25" cy="25" r="1" fill="rgba(255,255,255,0.1)"/><circle cx="75" cy="75" r="1" fill="rgba(255,255,255,0.1)"/><circle cx="50" cy="10" r="0.5" fill="rgba(255,255,255,0.05)"/><circle cx="10" cy="60" r="0.5" fill="rgba(255,255,255,0.05)"/><circle cx="90" cy="40" r="0.5" fill="rgba(255,255,255,0.05)"/></pattern></defs><rect width="100" height="100" fill="url(%23grain)"/></svg>');
+  opacity: 0.3;
+}
+
+.kebab-menu {
+  position: absolute;
+  top: 0;
+  right: -50px;
+  z-index: 20;
+}
+
+.profile-info {
+  position: relative;
+}
+
+.kebab-button {
+  background: rgba(0, 0, 0, 0.05);
+  border: 2px solid rgba(0, 0, 0, 0.1);
+  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.kebab-button:hover {
+  background: rgba(0, 0, 0, 0.1);
+  border-color: rgba(0, 0, 0, 0.2);
+  transform: scale(1.05);
+}
+
+.kebab-dot {
+  width: 4px;
+  height: 4px;
+  background: #666;
+  border-radius: 50%;
+}
+
+.dropdown-menu {
+  position: absolute;
+  top: 50px;
+  right: 0;
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+  min-width: 180px;
+  overflow: hidden;
+  animation: slideDown 0.2s ease-out;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.menu-item {
+  width: 100%;
+  padding: 12px 16px;
+  border: none;
+  background: none;
+  text-align: left;
+  font-size: 14px;
+  color: #333;
+  cursor: pointer;
+  transition: background 0.2s;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.menu-item:last-child {
+  border-bottom: none;
+}
+
+.menu-item:hover {
+  background: #f8f9fa;
+}
+
+.menu-item.danger {
+  color: #dc3545;
+}
+
+.menu-item.danger:hover {
+  background: #f8d7da;
+}
+
+/* Модальное окно */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  animation: fadeIn 0.3s ease-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.modal-content {
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+  max-width: 500px;
+  width: 90%;
+  max-height: 80vh;
+  overflow-y: auto;
+  animation: slideUp 0.3s ease-out;
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px 24px;
+  border-bottom: 1px solid #e9ecef;
+}
+
+.modal-header h3 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+  color: #333;
+}
+
+.modal-close {
+  background: none;
+  border: none;
+  font-size: 24px;
+  color: #666;
+  cursor: pointer;
+  padding: 0;
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  transition: all 0.2s;
+}
+
+.modal-close:hover {
+  background: #f8f9fa;
+  color: #333;
+}
+
+.modal-body {
+  padding: 24px;
+}
+
+.modal-detail-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 16px 0;
+  border-bottom: 1px solid #f8f9fa;
+}
+
+.modal-detail-item:last-child {
+  border-bottom: none;
+}
+
+.modal-detail-item label {
+  font-weight: 600;
+  color: #333;
+  min-width: 140px;
+  font-size: 14px;
+}
+
+.modal-detail-item span {
+  color: #666;
+  text-align: right;
+  flex: 1;
+  font-size: 14px;
+  word-break: break-word;
+}
+
 
 .profile-header {
   display: flex;
@@ -23,24 +254,30 @@
 }
 
 .edit-button {
-  background: #007bff;
+  background: rgba(255, 255, 255, 0.2);
   color: white;
-  border: none;
-  padding: 10px 20px;
-  border-radius: 6px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  padding: 12px 24px;
+  border-radius: 8px;
   cursor: pointer;
-  font-size: 14px;
-  transition: background 0.3s;
+  font-size: 16px;
+  font-weight: 600;
+  transition: all 0.3s;
+  backdrop-filter: blur(10px);
 }
 
 .edit-button:hover {
-  background: #0056b3;
+  background: rgba(255, 255, 255, 0.3);
+  border-color: rgba(255, 255, 255, 0.5);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
 }
 
 .profile-content {
   display: flex;
   gap: 40px;
   align-items: flex-start;
+  padding: 150px 40px 30px 40px;
 }
 
 .profile-avatar-section {
@@ -49,24 +286,58 @@
   align-items: center;
   gap: 15px;
   flex-shrink: 0;
+  position: absolute;
+  bottom: -120px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10;
 }
 
-.avatar {
-  width: 150px;
-  height: 150px;
-  border-radius: 50%;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+.user-name-section {
+  text-align: center;
+  margin-top: 10px;
+  position: relative;
+}
+
+.name-status-row {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 48px;
+  gap: 12px;
+  margin-bottom: 5px;
+}
+
+.user-name {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 700;
+  color: #333;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+.registration-date {
+  margin: 0;
+  font-size: 14px;
+  color: #888;
+  font-weight: 400;
+}
+
+.avatar {
+  width: 180px;
+  height: 180px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #FFA705 0%, #FF8C00 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 56px;
   font-weight: bold;
   color: white;
   background-size: cover;
   background-position: center;
   background-repeat: no-repeat;
-  border: 4px solid #fff;
-  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+  border: 6px solid #fff;
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.2);
   transition: all 0.3s ease;
 }
 
@@ -118,9 +389,10 @@
 .online-status {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   font-size: 14px;
   color: #666;
+  font-weight: 500;
 }
 
 .status-dot {
@@ -154,7 +426,7 @@
 
 .progress-bar {
   height: 6px;
-  background: linear-gradient(90deg, #007bff, #0056b3);
+  background: linear-gradient(90deg, #FFA705, #FF8C00);
   border-radius: 3px;
   transition: width 0.3s ease;
 }
@@ -201,7 +473,7 @@
 .form-group input:focus,
 .form-group textarea:focus {
   outline: none;
-  border-color: #007bff;
+  border-color: #FFA705;
 }
 
 .form-group textarea {
@@ -228,12 +500,12 @@
 }
 
 .save-button {
-  background: #007bff;
+  background: #FFA705;
   color: white;
 }
 
 .save-button:hover:not(:disabled) {
-  background: #0056b3;
+  background: #FF8C00;
 }
 
 .save-button:disabled {
@@ -301,7 +573,7 @@
   width: 40px;
   height: 40px;
   border: 4px solid #f3f3f3;
-  border-top: 4px solid #007bff;
+  border-top: 4px solid #FFA705;
   border-radius: 50%;
   animation: spin 1s linear infinite;
   margin: 0 auto 20px;
@@ -313,7 +585,7 @@
 }
 
 .retry-button {
-  background: #007bff;
+  background: #FFA705;
   color: white;
   border: none;
   padding: 10px 20px;
@@ -323,20 +595,484 @@
 }
 
 .retry-button:hover {
-  background: #0056b3;
+  background: #FF8C00;
+}
+
+/* Новые блоки под профилем */
+.profile-bottom-section {
+  display: flex;
+  gap: 30px;
+  padding: 30px 40px;
+  background: #f8f9fa;
+  border-top: 1px solid #e9ecef;
+}
+
+.gallery-section {
+  flex: 0 0 60%;
+  background: white;
+  border-radius: 12px;
+  padding: 24px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.friends-section {
+  flex: 0 0 40%;
+  background: white;
+  border-radius: 12px;
+  padding: 24px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  padding-bottom: 12px;
+  border-bottom: 2px solid #f0f0f0;
+}
+
+.section-header h3 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+  color: #333;
+}
+
+.section-count {
+  font-size: 14px;
+  color: #666;
+  background: #e9ecef;
+  padding: 4px 12px;
+  border-radius: 12px;
+}
+
+/* Галерея */
+.gallery-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+
+.gallery-item {
+  aspect-ratio: 1;
+  border-radius: 8px;
+  overflow: hidden;
+  cursor: pointer;
+  transition: transform 0.2s;
+}
+
+.gallery-item:hover {
+  transform: scale(1.02);
+}
+
+.gallery-placeholder {
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(135deg, #AdB5BD 0%, #6C757D 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+/* Кнопки галереи */
+.gallery-buttons {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.gallery-button {
+  flex: 1;
+  height: 36px;
+  border: none;
+  background: #f8f9fa;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.3s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 12px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.gallery-button:hover {
+  background: #e9ecef;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+}
+
+.gallery-button.upload-button {
+  background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+  color: white;
+}
+
+.gallery-button.upload-button:hover {
+  background: linear-gradient(135deg, #218838 0%, #1ea085 100%);
+}
+
+.gallery-button.view-all-button {
+  background: linear-gradient(135deg, #6c757d 0%, #495057 100%);
+  color: white;
+}
+
+.gallery-button.view-all-button:hover {
+  background: linear-gradient(135deg, #5a6268 0%, #343a40 100%);
+}
+
+.button-icon {
+  font-size: 16px;
+}
+
+.button-text {
+  font-size: 12px;
+  font-weight: 600;
+  text-align: center;
+}
+
+/* Кнопка создания поста */
+.create-post-section {
+  margin-top: 16px;
+}
+
+.create-post-button {
+  width: 100%;
+  height: 40px;
+  border: none;
+  background: linear-gradient(135deg, #FFA705 0%, #FF8C00 100%);
+  color: white;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.3s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  box-shadow: 0 3px 6px rgba(255, 167, 5, 0.3);
+}
+
+.create-post-button:hover {
+  background: linear-gradient(135deg, #FF8C00 0%, #FF7F00 100%);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 12px rgba(255, 167, 5, 0.4);
+}
+
+.create-post-button .button-icon {
+  font-size: 18px;
+}
+
+/* Страница редактирования профиля */
+.edit-banner {
+  position: relative;
+}
+
+.banner-overlay {
+  width: 100%;
+  height: 100%;
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+}
+
+.edit-controls {
+  display: flex;
+  gap: 12px;
+  margin-top: 15px;
+  justify-content: center;
+}
+
+.edit-control-button {
+  background: rgba(255, 255, 255, 0.9);
+  border: none;
+  border-radius: 8px;
+  padding: 10px 16px;
+  cursor: pointer;
+  transition: all 0.3s;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #333;
+  backdrop-filter: blur(10px);
+  min-width: 160px;
+  justify-content: center;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.edit-control-button:hover {
+  background: rgba(255, 255, 255, 1);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+.edit-control-button.avatar-button {
+  background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+  color: white;
+}
+
+.edit-control-button.avatar-button:hover {
+  background: linear-gradient(135deg, #218838 0%, #1ea085 100%);
+}
+
+.edit-control-button.banner-button {
+  background: linear-gradient(135deg, #FFA705 0%, #FF8C00 100%);
+  color: white;
+}
+
+.edit-control-button.banner-button:hover {
+  background: linear-gradient(135deg, #FF8C00 0%, #FF7F00 100%);
+}
+
+.edit-profile-content {
+  padding: 50px 40px 30px 40px;
+  display: flex;
+  flex-direction: column;
+  gap: 30px;
+}
+
+.edit-form-section {
+  background: white;
+  border-radius: 12px;
+  padding: 24px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.edit-form-section h3 {
+  margin: 0 0 20px 0;
+  font-size: 20px;
+  font-weight: 600;
+  color: #333;
+}
+
+.danger-zone {
+  background: #fff5f5;
+  border: 2px solid #fed7d7;
+  border-radius: 12px;
+  padding: 24px;
+}
+
+.danger-zone h3 {
+  margin: 0 0 12px 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: #c53030;
+}
+
+.danger-zone p {
+  margin: 0 0 20px 0;
+  color: #744210;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.delete-account-button {
+  background: #dc3545;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  padding: 12px 24px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+  transition: all 0.3s;
+}
+
+.delete-account-button:hover {
+  background: #c82333;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(220, 53, 69, 0.3);
+}
+
+/* Блок подписчиков */
+.followers-section {
+  margin-bottom: 20px;
+}
+
+.followers-section h4 {
+  margin: 0 0 12px 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #333;
+}
+
+.followers-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.follower-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 8px;
+  border-radius: 6px;
+  transition: background 0.2s;
+}
+
+.follower-item:hover {
+  background: #f8f9fa;
+}
+
+.follower-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #ffc107 0%, #fd7e14 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: bold;
+  color: white;
+}
+
+.follower-name {
+  font-size: 10px;
+  color: #666;
+  text-align: center;
+  word-break: break-word;
+  line-height: 1.2;
+}
+
+/* Разделительная черта */
+.section-divider {
+  height: 1px;
+  background: #e9ecef;
+  margin: 20px 0;
+  position: relative;
+}
+
+.section-divider::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 40px;
+  height: 1px;
+  background: #FFA705;
+}
+
+/* Сетка друзей */
+.friends-section-grid {
+  margin-top: 20px;
+}
+
+.friends-section-grid h4 {
+  margin: 0 0 12px 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #333;
+}
+
+.friends-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.friend-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 8px;
+  border-radius: 6px;
+  transition: background 0.2s;
+}
+
+.friend-item:hover {
+  background: #f8f9fa;
+}
+
+.friend-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #FFA705 0%, #FF8C00 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: bold;
+  color: white;
+}
+
+.friend-name {
+  font-size: 10px;
+  color: #666;
+  text-align: center;
+  word-break: break-word;
+  line-height: 1.2;
 }
 
 /* Адаптивность */
 @media (max-width: 768px) {
-  .profile-content {
-    flex-direction: column;
-    gap: 20px;
+  .profile-banner {
+    height: 200px;
+    padding-bottom: 100px;
+  }
+  
+  .kebab-menu {
+    top: 0;
+    right: -40px;
+  }
+  
+  .kebab-button {
+    width: 35px;
+    height: 35px;
+  }
+  
+  .dropdown-menu {
+    min-width: 160px;
+  }
+  
+  
+  .profile-avatar-section {
+    bottom: -100px;
   }
   
   .avatar {
-    width: 120px;
-    height: 120px;
-    font-size: 36px;
+    width: 140px;
+    height: 140px;
+    font-size: 42px;
+  }
+  
+  .user-name {
+    font-size: 20px;
+  }
+  
+  .name-status-row {
+    gap: 8px;
+  }
+  
+  .online-status {
+    font-size: 12px;
+  }
+  
+  .registration-date {
+    font-size: 12px;
+  }
+  
+  .profile-content {
+    flex-direction: column;
+    gap: 20px;
+    padding: 130px 20px 20px 20px;
   }
   
   .detail-item {
@@ -348,5 +1084,143 @@
   .detail-item span {
     text-align: left;
     min-width: auto;
+  }
+  
+  .modal-content {
+    width: 95%;
+    max-width: none;
+    margin: 20px;
+  }
+  
+  .modal-header {
+    padding: 16px 20px;
+  }
+  
+  .modal-header h3 {
+    font-size: 18px;
+  }
+  
+  .modal-body {
+    padding: 20px;
+  }
+  
+  .modal-detail-item {
+    flex-direction: column;
+    gap: 8px;
+    padding: 12px 0;
+  }
+  
+  .modal-detail-item label,
+  .modal-detail-item span {
+    text-align: left;
+    min-width: auto;
+  }
+
+  /* Адаптивность для новых блоков */
+  .profile-bottom-section {
+    flex-direction: column;
+    gap: 20px;
+    padding: 20px;
+  }
+
+  .gallery-section,
+  .friends-section {
+    flex: none;
+  }
+
+  .gallery-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+  }
+
+  .gallery-buttons {
+    gap: 6px;
+    margin-top: 8px;
+  }
+
+  .gallery-button {
+    height: 32px;
+    padding: 0 8px;
+  }
+
+  .button-icon {
+    font-size: 14px;
+  }
+
+  .button-text {
+    font-size: 11px;
+  }
+
+  .create-post-button {
+    height: 36px;
+    font-size: 13px;
+  }
+
+  .create-post-button .button-icon {
+    font-size: 16px;
+  }
+
+  .followers-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 6px;
+  }
+
+  .follower-avatar {
+    width: 28px;
+    height: 28px;
+    font-size: 10px;
+  }
+
+  .follower-name {
+    font-size: 9px;
+  }
+
+  .friends-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 6px;
+  }
+
+  .friend-avatar {
+    width: 28px;
+    height: 28px;
+    font-size: 10px;
+  }
+
+  .friend-name {
+    font-size: 9px;
+  }
+
+  /* Адаптивность для страницы редактирования */
+  .edit-profile-content {
+    padding: 40px 20px 20px 20px;
+    gap: 20px;
+  }
+
+  .edit-form-section {
+    padding: 20px;
+  }
+
+  .edit-form-section h3 {
+    font-size: 18px;
+  }
+
+  .danger-zone {
+    padding: 20px;
+  }
+
+  .danger-zone h3 {
+    font-size: 16px;
+  }
+
+  .edit-controls {
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 12px;
+  }
+
+  .edit-control-button {
+    padding: 8px 12px;
+    font-size: 12px;
+    min-width: 140px;
   }
 }
