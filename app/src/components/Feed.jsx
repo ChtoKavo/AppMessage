@@ -309,7 +309,6 @@ formData.append('category_id', '1');
   return (
     <div className="feed">
       <div className="feed-header">
-        <h2>Лента новостей</h2>
         <div className="header-actions">
           {!socketConnected && (
             <span className="connection-warning">(REST режим)</span>
@@ -318,7 +317,7 @@ formData.append('category_id', '1');
             className="create-post-btn"
             onClick={() => setShowCreatePost(true)}
           >
-            📝 Создать пост
+            + Написать пост
           </button>
         </div>
       </div>
@@ -546,10 +545,7 @@ const PostItem = ({ post, currentUser, onLike, formatDate, socketConnected }) =>
         )}
       </div>
 
-      <div className="post-stats">
-        <span className="stat">{post.likes_count || 0} лайков</span>
-        <span className="stat">{post.comments_count || 0} комментариев</span>
-      </div>
+      {/* counters moved into buttons; stats section removed */}
 
       <div className="post-actions">
         <button 
@@ -557,18 +553,20 @@ const PostItem = ({ post, currentUser, onLike, formatDate, socketConnected }) =>
           onClick={() => onLike(post.post_id)}
           title={socketConnected ? '' : 'Используется REST API'}
         >
-          {post.is_liked ? '❤️' : '🤍'} 
-          {post.is_liked ? 'Не нравится' : 'Нравится'}
+          {post.is_liked ? '❤️' : '🤍'}
+          <span>{post.likes_count || 0}</span>
         </button>
         <button 
           className="comment-btn"
           onClick={loadComments}
           disabled={loadingComments}
+          title="Комментарии"
         >
-          {loadingComments ? '...' : '💬 Комментировать'}
+          💬
+          <span>{loadingComments ? '…' : (post.comments_count || 0)}</span>
         </button>
-        <button className="share-btn">
-          🔄 Поделиться
+        <button className="share-btn" title="Поделиться">
+          🔄
         </button>
       </div>
 
@@ -611,11 +609,11 @@ const PostItem = ({ post, currentUser, onLike, formatDate, socketConnected }) =>
                   <div className="comment-content">
                     <div className="comment-header">
                       <strong>{comment.user_name}</strong>
-                      <span className="comment-time">
-                        {formatDate(comment.created_at)}
-                      </span>
                     </div>
-                    <p>{comment.content}</p>
+                    <p className="comment-text">{comment.content}</p>
+                    <span className="comment-time">
+                      {formatDate(comment.created_at)}
+                    </span>
                   </div>
                 </div>
               ))

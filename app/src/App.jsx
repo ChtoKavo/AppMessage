@@ -10,7 +10,6 @@ import Friends from './components/Friends';
 import Profile from './components/Profile';
 import AdminPanel from './components/AdminPanel';
 import Fon from '../public/фон.png';
-import Logo from '../public/Лого.png';
 import Friend from '../public/friend.png';
 import Chat from '../public/chat.png';
 import Lenta from '../public/lenta.png';
@@ -126,9 +125,16 @@ function MainApp({ currentUser, activeTab, setActiveTab, sidebarOpen, setSidebar
             </button>
             <div className="header-brand">
               <a href="#" className="logo">
-                <div className="logo-icon"><img src={Logo} alt="" /></div>
-                <span className="logo-text">Chill Out</span>
+                <div className="logo-icon"><img src={`http://localhost:5001/image/Лого.png`} alt="" /></div>
+                <img className="logo-large" src={`http://localhost:5001/image/Лого.png`} alt="Логотип" />
               </a>
+            </div>
+            <div className="header-search">
+              <input 
+                type="text" 
+                className="header-search-input" 
+                placeholder="Поиск..." 
+              />
             </div>
           </div>
 

@@ -7,6 +7,7 @@ const Friends = ({ currentUser, socket }) => {
   const [friends, setFriends] = useState([]);
   const [friendRequests, setFriendRequests] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
+  const [friendsFilter, setFriendsFilter] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [loading, setLoading] = useState(false);
   const [socketConnected, setSocketConnected] = useState(false);
@@ -377,8 +378,6 @@ const findFriendshipId = async (friendId) => {
       <div className="friends-header">
         <h1>Друзья</h1>
         <div className="friends-stats">
-          <span className="stat">Всего: {friends.length}</span>
-          <span className="stat online">Онлайн: {getOnlineFriends().length}</span>
           {friendRequests.length > 0 && (
             <span className="stat requests">Запросы: {friendRequests.length}</span>
           )}
@@ -388,7 +387,8 @@ const findFriendshipId = async (friendId) => {
         </div>
       </div>
 
-      <div className="friends-tabs">
+      <div className="friends-controls">
+        <div className="friends-tabs">
         <button 
           className={`tab ${activeTab === 'all' ? 'active' : ''}`}
           onClick={() => setActiveTab('all')}
@@ -399,26 +399,41 @@ const findFriendshipId = async (friendId) => {
           className={`tab ${activeTab === 'online' ? 'active' : ''}`}
           onClick={() => setActiveTab('online')}
         >
-          Онлайн
+          Друзья онлайн
         </button>
         <button 
-          className={`tab ${activeTab === 'requests' ? 'active' : ''}`}
-          onClick={() => setActiveTab('requests')}
+            className={`tab ${activeTab === 'mutual' ? 'active' : ''}`}
+            onClick={() => setActiveTab('mutual')}
         >
-          Запросы {friendRequests.length > 0 && `(${friendRequests.length})`}
+          Общие друзья
         </button>
+        </div>
         <button 
-          className={`tab ${activeTab === 'find' ? 'active' : ''}`}
+          className="find-friends-btn"
           onClick={() => setActiveTab('find')}
         >
           Найти друзей
         </button>
       </div>
 
+      <div className="friends-search">
+        <input
+          type="text"
+          placeholder="Поиск среди друзей..."
+          value={friendsFilter}
+          onChange={(e) => setFriendsFilter(e.target.value)}
+          className="friends-filter-input"
+        />
+      </div>
+
       <div className="friends-content">
         {activeTab === 'all' && (
           <FriendsList 
-            friends={friends}
+            friends={friends.filter(f => {
+              if (!friendsFilter.trim()) return true;
+              const q = friendsFilter.toLowerCase();
+              return ((f.name||'').toLowerCase().includes(q) || (f.email||'').toLowerCase().includes(q));
+            })}
             onRemoveFriend={removeFriend}
             loading={loading}
             emptyMessage="У вас пока нет друзей"
@@ -427,18 +442,27 @@ const findFriendshipId = async (friendId) => {
 
         {activeTab === 'online' && (
           <FriendsList 
-            friends={getOnlineFriends()}
+            friends={getOnlineFriends().filter(f => {
+              if (!friendsFilter.trim()) return true;
+              const q = friendsFilter.toLowerCase();
+              return ((f.name||'').toLowerCase().includes(q) || (f.email||'').toLowerCase().includes(q));
+            })}
             onRemoveFriend={removeFriend}
             loading={loading}
             emptyMessage="Нет друзей онлайн"
           />
         )}
 
-        {activeTab === 'requests' && (
-          <FriendRequests 
-            requests={friendRequests}
-            onRespond={respondToFriendRequest}
-            emptyMessage="Нет pending запросов"
+        {activeTab === 'mutual' && (
+          <FriendsList 
+            friends={friends.filter(f => f.is_mutual).filter(f => {
+              if (!friendsFilter.trim()) return true;
+              const q = friendsFilter.toLowerCase();
+              return ((f.name||'').toLowerCase().includes(q) || (f.email||'').toLowerCase().includes(q));
+            })}
+            onRemoveFriend={removeFriend}
+            loading={loading}
+            emptyMessage="Нет общих друзей"
           />
         )}
 
@@ -502,6 +526,10 @@ const FriendCard = ({ friend, onRemove }) => {
     alert(`Открыть чат с ${friend.name}`);
   };
 
+  const handleCall = () => {
+    alert(`Позвонить ${friend.name}`);
+  };
+
   const getLastSeen = (lastSeen) => {
     if (!lastSeen) return 'давно';
     
@@ -553,16 +581,22 @@ const FriendCard = ({ friend, onRemove }) => {
           {showActions && (
             <div className="actions-menu">
               <button 
-                className="action-item"
-                onClick={handleMessage}
-              >
-                💬 Написать
-              </button>
-              <button 
                 className="action-item remove"
                 onClick={() => onRemove(friend.user_id)}
               >
-                🗑️ Удалить
+                🗑️ Удалить из друзей
+              </button>
+              <button 
+                className="action-item"
+                onClick={() => alert('Оставить в подписчиках')}
+              >
+                👤 Оставить в подписчиках
+              </button>
+              <button 
+                className="action-item"
+                onClick={() => alert('Посмотреть друзей')}
+              >
+                👥 Посмотреть друзей
               </button>
             </div>
           )}
@@ -578,9 +612,9 @@ const FriendCard = ({ friend, onRemove }) => {
         </button>
         <button 
           className="action-btn secondary"
-          onClick={() => onRemove(friend.user_id)}
+          onClick={handleCall}
         >
-          Удалить
+          📞 Позвонить
         </button>
       </div>
     </div>

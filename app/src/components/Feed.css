@@ -6,11 +6,9 @@
 
 .feed-header {
   display: flex;
-  justify-content: space-between;
+  justify-content: center;
   align-items: center;
-  margin-bottom: 24px;
-  padding-bottom: 16px;
-  border-bottom: 1px solid #e8ecef;
+  margin-bottom: 16px;
 }
 
 .feed-header h2 {
@@ -35,21 +33,27 @@
 }
 
 .create-post-btn {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
-  border: none;
-  padding: 10px 20px;
+  background: transparent;
+  color: #FFA705;
+  border: 1px solid #FFA705;
+  padding: 12px 16px;
   border-radius: 8px;
   cursor: pointer;
-  font-weight: 500;
+  font-weight: 600;
   font-size: 14px;
-  transition: all 0.2s ease;
-  box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+  transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease, transform 0.05s ease;
+  box-shadow: none;
+  width: 100%;
+  max-width: 710px; /* match card width */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
 }
 
 .create-post-btn:hover {
+  background: rgba(255, 167, 5, 0.08);
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
 }
 
 /* Модальное окно создания поста */
@@ -230,7 +234,7 @@
 }
 
 .submit-btn {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, #FFA705 0%, #ffb733 100%);
   color: white;
   border: none;
   padding: 8px 20px;
@@ -243,7 +247,7 @@
 
 .submit-btn:hover:not(:disabled) {
   transform: translateY(-1px);
-  box-shadow: 0 4px 8px rgba(102, 126, 234, 0.3);
+  box-shadow: 0 4px 8px rgba(255, 167, 5, 0.35);
 }
 
 .submit-btn:disabled {
@@ -258,6 +262,34 @@
   display: flex;
   flex-direction: column;
   gap: 20px;
+  align-items: center; /* center the fixed-width cards */
+  max-height: calc(100vh - 180px); /* allow page to scroll posts */
+  overflow-y: auto;
+  padding-right: 0;
+  scrollbar-width: thin; /* Firefox */
+  scrollbar-color: #FFA705 transparent; /* Firefox: orange thumb, transparent track */
+  max-width: 710px; /* bring scrollbar close to posts */
+  width: 100%;
+  margin: 0 auto;
+}
+
+/* Custom scrollbar (WebKit/Blink) */
+.posts-list::-webkit-scrollbar {
+  width: 10px;
+}
+
+.posts-list::-webkit-scrollbar-track {
+  background: transparent; /* transparent track */
+}
+
+.posts-list::-webkit-scrollbar-thumb {
+  background: #FFA705;
+  border-radius: 8px;
+  border: none; /* remove surrounding border so only orange bar shows */
+}
+
+.posts-list::-webkit-scrollbar-thumb:hover {
+  background: #ffb733;
 }
 
 .loading {
@@ -271,7 +303,7 @@
   width: 32px;
   height: 32px;
   border: 3px solid #f8f9fa;
-  border-top: 3px solid #667eea;
+  border-top: 3px solid #FFA705;
   border-radius: 50%;
   animation: spin 1s linear infinite;
   margin: 0 auto 16px;
@@ -321,16 +353,20 @@
 
 /* Элемент поста */
 .post-item {
-  background: white;
+  background: #ffffff;
   border-radius: 16px;
   padding: 24px;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
-  border: 1px solid #e8ecef;
-  transition: all 0.2s ease;
+  box-shadow: 0 6px 24px rgba(17, 24, 39, 0.08);
+  border: 1px solid #eef1f4;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+  width: 100%;
+  max-width: 710px; /* requested fixed width */
 }
 
 .post-item:hover {
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.12);
+  box-shadow: 0 12px 28px rgba(17, 24, 39, 0.12);
+  transform: translateY(-2px);
+  border-color: #e4e8ee;
 }
 
 .post-header {
@@ -349,13 +385,14 @@
   width: 48px;
   height: 48px;
   border-radius: 50%;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, #FFA705 0%, #ffb733 100%);
   display: flex;
   align-items: center;
   justify-content: center;
   color: white;
   font-weight: 600;
   font-size: 16px;
+  box-shadow: 0 4px 10px rgba(255, 167, 5, 0.35);
 }
 
 .author-info {
@@ -382,8 +419,8 @@
 .post-content p {
   margin: 0 0 16px 0;
   color: #2c3e50;
-  line-height: 1.6;
-  font-size: 15px;
+  line-height: 1.7;
+  font-size: 16px;
 }
 
 .post-image {
@@ -391,7 +428,13 @@
   max-height: 400px;
   object-fit: cover;
   border-radius: 12px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.12);
+  transition: transform 0.25s ease, box-shadow 0.25s ease;
+}
+
+.post-image:hover {
+  transform: scale(1.01);
+  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.14);
 }
 
 .post-stats {
@@ -403,41 +446,59 @@
 }
 
 .stat {
-  color: #6c757d;
-  font-size: 13px;
-  font-weight: 500;
+  color: #495057;
+  font-size: 12px;
+  font-weight: 600;
+  background: #f5f7fb;
+  border: 1px solid #e8ecef;
+  padding: 4px 10px;
+  border-radius: 999px;
 }
 
 .post-actions {
   display: flex;
-  gap: 8px;
+  gap: 6px;
 }
 
 .like-btn, .comment-btn, .share-btn {
   flex: 1;
-  background: #f8f9fa;
+  background: #ffffff;
   border: 1px solid #e8ecef;
-  padding: 10px 16px;
+  padding: 6px 10px;
   border-radius: 8px;
   cursor: pointer;
-  font-size: 14px;
-  color: #6c757d;
-  transition: all 0.2s ease;
+  font-size: 12px;
+  color: #5a6a7a;
+  transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease, transform 0.05s ease;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
 }
 
+/* counters inside buttons */
+.like-btn span, .comment-btn span {
+  display: inline-block;
+  min-width: 16px;
+  padding-left: 4px;
+  color: #6b7a8a;
+}
+
 .like-btn:hover, .comment-btn:hover, .share-btn:hover {
-  background: #e9ecef;
+  background: #f7f9fc;
   color: #2c3e50;
+  border-color: #e1e6ed;
 }
 
 .like-btn.liked {
-  background: rgba(231, 76, 60, 0.1);
-  border-color: rgba(231, 76, 60, 0.2);
-  color: #e74c3c;
+  background: rgba(255, 167, 5, 0.08);
+  border-color: rgba(255, 167, 5, 0.35);
+  color: #FFA705;
+  box-shadow: 0 4px 10px rgba(255, 167, 5, 0.15);
+}
+
+.like-btn:active, .comment-btn:active, .share-btn:active {
+  transform: translateY(1px);
 }
 
 /* Комментарии */
@@ -450,15 +511,15 @@
 .add-comment {
   display: flex;
   align-items: center;
-  gap: 12px;
-  margin-bottom: 16px;
+  gap: 8px;
+  margin-bottom: 12px;
 }
 
 .comment-avatar {
   width: 32px;
   height: 32px;
   border-radius: 50%;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, #FFA705 0%, #ffb733 100%);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -484,25 +545,25 @@
 .comment-input {
   flex: 1;
   border: 1px solid #e8ecef;
-  padding: 10px 16px;
-  border-radius: 20px;
+  padding: 8px 12px;
+  border-radius: 14px;
   outline: none;
-  font-size: 14px;
+  font-size: 13px;
   background: #f8f9fa;
   transition: all 0.2s ease;
 }
 
 .comment-input:focus {
   background: white;
-  border-color: #667eea;
-  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+  border-color: #FFA705;
+  box-shadow: 0 0 0 3px rgba(255, 167, 5, 0.12);
 }
 
 .send-comment-btn {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, #FFA705 0%, #ffb733 100%);
   color: white;
   border: none;
-  padding: 8px 16px;
+  padding: 6px 12px;
   border-radius: 6px;
   cursor: pointer;
   font-size: 12px;
@@ -523,45 +584,52 @@
 .comments-list {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 8px;
 }
 
 .comment {
   display: flex;
   align-items: flex-start;
-  gap: 12px;
+  gap: 10px;
 }
 
 .comment-content {
   flex: 1;
   background: #f8f9fa;
-  padding: 12px 16px;
-  border-radius: 12px;
+  padding: 10px 12px 8px 12px;
+  border-radius: 10px;
+  position: relative;
+  text-align: left;
 }
 
 .comment-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
+  display: block;
   margin-bottom: 4px;
 }
 
 .comment-header strong {
   color: #2c3e50;
-  font-size: 13px;
+  font-size: 16px;
   font-weight: 600;
 }
 
 .comment-time {
   color: #adb5bd;
-  font-size: 11px;
+  font-size: 10px;
+  position: absolute;
+  top: 8px;
+  right: 10px;
 }
 
 .comment-content p {
   margin: 0;
   color: #2c3e50;
-  font-size: 14px;
-  line-height: 1.4;
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.comment-text {
+  padding-right: 56px; /* leave room for time on right */
 }
 
 .no-comments {
