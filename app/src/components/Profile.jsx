@@ -32,6 +32,20 @@ const Profile = ({ currentUser, profileUserId = null }) => {
     }
   }, [currentUser, profileUserId]);
 
+  const testBannerUpload = async () => {
+  console.log('=== TEST BANNER UPLOAD ===');
+  
+  // Проверяем текущее состояние
+  const debugResponse = await fetch(`${API_BASE_URL}/api/debug/files`);
+  const debugData = await debugResponse.json();
+  console.log('Current files on server:', debugData);
+  
+  // Проверяем текущий профиль
+  const profileResponse = await fetch(`${API_BASE_URL}/api/users/${targetUserId}/profile`);
+  const profileData = await profileResponse.json();
+  console.log('Current profile:', profileData);
+};
+
   // Закрываем меню при клике вне его
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -60,52 +74,63 @@ const Profile = ({ currentUser, profileUserId = null }) => {
     };
   }, [isModalOpen]);
 
-  const loadUserProfile = async () => {
-    try {
-      setLoading(true);
-      setError('');
-      console.log('Loading profile for user:', currentUser);
-      
-      if (!currentUser || !currentUser.user_id) {
-        throw new Error('Текущий пользователь не определен');
-      }
-
-      const response = await fetch(`${API_BASE_URL}/api/users/${targetUserId}/profile`);
-      
-      if (!response.ok) {
-        throw new Error('Ошибка загрузки профиля');
-      }
-      
-      const userData = await response.json();
-      console.log('Loaded user data:', userData);
-      
-      setUser(userData);
-      setEditForm({
-        name: userData.name || '',
-        bio: userData.bio || ''
-      });
-      
-      // Устанавливаем превью аватарки если есть
-      if (userData.avatar_url) {
-        setAvatarPreview(`${API_BASE_URL}${userData.avatar_url}?t=${Date.now()}`);
-      } else {
-        setAvatarPreview(null);
-      }
-
-      // Устанавливаем превью баннера если есть
-      if (userData.banner_url) {
-        setBannerPreview(`${API_BASE_URL}${userData.banner_url}?t=${Date.now()}`);
-      } else {
-        setBannerPreview(null);
-      }
-    } catch (error) {
-      console.error('Error loading profile:', error);
-      setError(error.message);
-    } finally {
-      setLoading(false);
+const loadUserProfile = async () => {
+  try {
+    setLoading(true);
+    setError('');
+    console.log('=== LOADING PROFILE DEBUG ===');
+    
+    if (!currentUser || !currentUser.user_id) {
+      throw new Error('Текущий пользователь не определен');
     }
-  };
 
+    const response = await fetch(`${API_BASE_URL}/api/users/${targetUserId}/profile?t=${Date.now()}`);
+    
+    if (!response.ok) {
+      throw new Error('Ошибка загрузки профиля: ' + response.status);
+    }
+    
+    const userData = await response.json();
+    console.log('✅ Server response:', userData);
+    
+    setUser(userData);
+    setEditForm({
+      name: userData.name || '',
+      bio: userData.bio || ''
+    });
+    
+    // Исправленная часть - добавляем базовый URL для баннера
+    if (userData.banner_url) {
+      // Если URL уже полный (содержит localhost), используем как есть
+      const bannerUrl = userData.banner_url.includes('http') 
+        ? `${userData.banner_url}?t=${Date.now()}`
+        : `${API_BASE_URL}${userData.banner_url}?t=${Date.now()}`;
+      
+      console.log('🎯 Setting banner preview URL:', bannerUrl);
+      setBannerPreview(bannerUrl);
+    } else {
+      console.log('ℹ️ No banner URL in response');
+      setBannerPreview(null);
+    }
+
+    if (userData.avatar_url) {
+      const avatarUrl = userData.avatar_url.includes('http')
+        ? `${userData.avatar_url}?t=${Date.now()}`
+        : `${API_BASE_URL}${userData.avatar_url}?t=${Date.now()}`;
+      
+      console.log('🎯 Setting avatar preview URL:', avatarUrl);
+      setAvatarPreview(avatarUrl);
+    } else {
+      setAvatarPreview(null);
+    }
+    
+  } catch (error) {
+    console.error('❌ Error loading profile:', error);
+    setError(error.message);
+  } finally {
+    setLoading(false);
+  }
+};
   const handleEdit = () => {
     setIsEditPage(true);
     closeMenu();
@@ -150,38 +175,82 @@ const Profile = ({ currentUser, profileUserId = null }) => {
     }
   };
 
-  const handleSave = async () => {
-    try {
-      setLoading(true);
-      setError('');
-      setUploadProgress(0);
-      
-      const formData = new FormData();
-      formData.append('name', editForm.name);
-      formData.append('bio', editForm.bio);
+const handleSave = async () => {
+  try {
+    setLoading(true);
+    setError('');
+    setUploadProgress(0);
+    
+    const formData = new FormData();
+    formData.append('name', editForm.name);
+    formData.append('bio', editForm.bio);
 
-      // Добавляем файл аватарки если выбран новый
-      if (fileInputRef.current?.files[0]) {
-        formData.append('avatar', fileInputRef.current.files[0]);
-      }
+    // Логируем все данные формы
+    console.log('=== FORM DATA DEBUG ===');
+    console.log('Name:', editForm.name);
+    console.log('Bio:', editForm.bio);
 
-      // Добавляем файл баннера если выбран новый
-      if (bannerInputRef.current?.files[0]) {
-        formData.append('banner', bannerInputRef.current.files[0]);
-      }
-
-      const xhr = new XMLHttpRequest();
-      
-      xhr.upload.addEventListener('progress', (e) => {
-        if (e.lengthComputable) {
-          const percentComplete = (e.loaded / e.total) * 100;
-          setUploadProgress(percentComplete);
-        }
+    // Добавляем файл аватарки если выбран новый
+    if (fileInputRef.current?.files[0]) {
+      const avatarFile = fileInputRef.current.files[0];
+      console.log('Avatar file:', {
+        name: avatarFile.name,
+        size: avatarFile.size,
+        type: avatarFile.type
       });
+      formData.append('avatar', avatarFile);
+    } else {
+      console.log('No avatar file selected');
+    }
 
-      xhr.addEventListener('load', () => {
-        if (xhr.status === 200) {
+    // Добавляем файл баннера если выбран новый
+    if (bannerInputRef.current?.files[0]) {
+      const bannerFile = bannerInputRef.current.files[0];
+      console.log('Banner file:', {
+        name: bannerFile.name,
+        size: bannerFile.size,
+        type: bannerFile.type
+      });
+      formData.append('banner', bannerFile);
+    } else {
+      console.log('No banner file selected');
+    }
+
+    // Проверяем что formData содержит файлы
+    console.log('FormData entries:');
+    for (let [key, value] of formData.entries()) {
+      if (value instanceof File) {
+        console.log(`${key}:`, { name: value.name, size: value.size, type: value.type });
+      } else {
+        console.log(`${key}:`, value);
+      }
+    }
+
+    const xhr = new XMLHttpRequest();
+    
+    xhr.upload.addEventListener('progress', (e) => {
+      if (e.lengthComputable) {
+        const percentComplete = (e.loaded / e.total) * 100;
+        setUploadProgress(percentComplete);
+        console.log(`Upload progress: ${percentComplete}%`);
+      }
+    });
+
+    xhr.addEventListener('load', () => {
+      console.log('=== RESPONSE DEBUG ===');
+      console.log('Status:', xhr.status);
+      console.log('Response headers:', xhr.getAllResponseHeaders());
+      console.log('Response text:', xhr.responseText);
+      
+      if (xhr.status === 200) {
+        try {
           const updatedUser = JSON.parse(xhr.responseText);
+          console.log('Updated user data from server:', updatedUser);
+          
+          // Проверяем что баннер действительно обновился
+          console.log('Banner URL in response:', updatedUser.banner_url);
+          console.log('Avatar URL in response:', updatedUser.avatar_url);
+          
           setUser(updatedUser);
           setIsEditing(false);
           setIsEditPage(false);
@@ -192,36 +261,76 @@ const Profile = ({ currentUser, profileUserId = null }) => {
             ...savedUser,
             name: updatedUser.name,
             avatar_url: updatedUser.avatar_url,
-            banner_url: updatedUser.banner_url
+            banner_url: updatedUser.banner_url,
+            bio: updatedUser.bio
           };
           localStorage.setItem('currentUser', JSON.stringify(updatedCurrentUser));
+          console.log('Updated localStorage:', updatedCurrentUser);
           
-          // Сбрасываем превью
-          setAvatarPreview(updatedUser.avatar_url ? `${API_BASE_URL}${updatedUser.avatar_url}?t=${Date.now()}` : null);
-          setBannerPreview(updatedUser.banner_url ? `${API_BASE_URL}${updatedUser.banner_url}?t=${Date.now()}` : null);
+          // Принудительно обновляем превью
+          if (updatedUser.banner_url) {
+            const newBannerUrl = `${API_BASE_URL}${updatedUser.banner_url}?t=${Date.now()}`;
+            console.log('Setting banner preview to:', newBannerUrl);
+            setBannerPreview(newBannerUrl);
+          } else {
+            console.log('No banner URL in response');
+            setBannerPreview(null);
+          }
+          
+          if (updatedUser.avatar_url) {
+            const newAvatarUrl = `${API_BASE_URL}${updatedUser.avatar_url}?t=${Date.now()}`;
+            console.log('Setting avatar preview to:', newAvatarUrl);
+            setAvatarPreview(newAvatarUrl);
+          }
+          
           setUploadProgress(0);
-        } else {
-          setError('Ошибка сохранения профиля');
+          
+        } catch (parseError) {
+          console.error('Error parsing response:', parseError);
+          setError('Ошибка обработки ответа сервера: ' + parseError.message);
         }
-        setLoading(false);
-      });
+      } else {
+        let errorMessage = 'Ошибка сохранения профиля';
+        try {
+          const errorResponse = JSON.parse(xhr.responseText);
+          errorMessage = errorResponse.error || errorMessage;
+        } catch (e) {
+          console.error('Error parsing error response:', e);
+        }
+        setError(errorMessage);
+      }
+      setLoading(false);
+    });
 
-      xhr.addEventListener('error', () => {
-        setError('Ошибка сети при сохранении профиля');
-        setLoading(false);
-        setUploadProgress(0);
-      });
-
-      xhr.open('PUT', `${API_BASE_URL}/api/users/${currentUser.user_id}/profile`);
-      xhr.send(formData);
-      
-    } catch (error) {
-      console.error('Error saving profile:', error);
-      setError(error.message);
+    xhr.addEventListener('error', (e) => {
+      console.error('Network error during profile save:', e);
+      setError('Ошибка сети при сохранении профиля');
       setLoading(false);
       setUploadProgress(0);
-    }
-  };
+    });
+
+    xhr.addEventListener('abort', () => {
+      console.log('Request aborted');
+      setLoading(false);
+      setUploadProgress(0);
+    });
+
+    const url = `${API_BASE_URL}/api/users/${currentUser.user_id}/profile`;
+    console.log('Sending request to:', url);
+    xhr.open('PUT', url);
+    
+    // Важно: НЕ устанавливать Content-Type вручную для FormData
+    // Браузер установит его автоматически с boundary
+    
+    xhr.send(formData);
+    
+  } catch (error) {
+    console.error('Error in handleSave:', error);
+    setError(error.message);
+    setLoading(false);
+    setUploadProgress(0);
+  }
+};
 
   const handleAvatarClick = () => {
     if (isEditing || isEditPage) {
@@ -317,6 +426,50 @@ const Profile = ({ currentUser, profileUserId = null }) => {
       [name]: value
     }));
   };
+
+  const ProfileBanner = ({ bannerUrl, isEditing, onBannerClick, onRemoveBanner }) => {
+  const [currentBannerUrl, setCurrentBannerUrl] = useState(null);
+
+  useEffect(() => {
+    if (bannerUrl) {
+      // Добавляем timestamp для предотвращения кэширования
+      const urlWithCacheBust = `${bannerUrl}?t=${Date.now()}`;
+      setCurrentBannerUrl(urlWithCacheBust);
+    } else {
+      setCurrentBannerUrl(null);
+    }
+  }, [bannerUrl]);
+
+  return (
+    <div className="profile-banner">
+      <div 
+        className="banner-overlay"
+        style={{
+          backgroundImage: currentBannerUrl ? `url(${currentBannerUrl})` : 'none'
+        }}
+      >
+        {isEditing && (
+          <div className="banner-controls">
+            <button 
+              className="banner-upload-button"
+              onClick={onBannerClick}
+            >
+              📷 Сменить баннер
+            </button>
+            {currentBannerUrl && (
+              <button 
+                className="banner-remove-button"
+                onClick={onRemoveBanner}
+              >
+                ❌ Удалить
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
 
   const getOnlineStatus = (userData) => {
     if (!userData) return 'Неизвестно';
@@ -420,7 +573,7 @@ const Profile = ({ currentUser, profileUserId = null }) => {
           <div 
             className="banner-overlay"
             style={{
-              backgroundImage: bannerPreview ? `url(${bannerPreview})` : (user?.banner_url ? `url(${API_BASE_URL}${user.banner_url})` : 'none')
+               backgroundImage: bannerPreview ? `url(${bannerPreview})` : (user?.banner_url ? `url(${user.banner_url})` : 'none')
             }}
           >
             <div className="banner-controls">

@@ -16,6 +16,40 @@
       const app = express();
       const server = http.createServer(app);
 
+      // Создаем папки если они не существуют
+const ensureDirectories = () => {
+  const directories = [
+    'uploads',
+    'uploads/avatars', 
+    'uploads/banners',
+    'uploads/audio',
+    'uploads/images',
+    'uploads/videos',
+    'uploads/files'
+  ];
+  
+  directories.forEach(dir => {
+    const fullPath = path.join(__dirname, dir);
+    if (!fs.existsSync(fullPath)) {
+      fs.mkdirSync(fullPath, { recursive: true });
+      console.log(`Created directory: ${fullPath}`);
+    } else {
+      console.log(`Directory exists: ${fullPath}`);
+    }
+    
+    // Проверяем права на запись
+    try {
+      fs.accessSync(fullPath, fs.constants.W_OK);
+      console.log(`Write access OK: ${fullPath}`);
+    } catch (accessError) {
+      console.error(`No write access to: ${fullPath}`, accessError);
+    }
+  });
+};
+
+// Вызываем при запуске сервера
+ensureDirectories();
+
       // =========================== НАСТРОЙКА CORS ============================
       const corsOptions = {
         origin: ["http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:3000", "http://localhost:5174"],
@@ -131,8 +165,14 @@ if (!fs.existsSync(bannersDir)) {
   fs.mkdirSync(bannersDir, { recursive: true });
 }
  
+// Обслуживание статических файлов с правильными заголовками
 app.use('/uploads', express.static(path.join(__dirname, 'uploads'), {
   setHeaders: (res, path) => {
+    // Отключаем кэширование для разработки
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+    
     // Устанавливаем правильные заголовки для изображений
     if (path.endsWith('.jpg') || path.endsWith('.jpeg')) {
       res.setHeader('Content-Type', 'image/jpeg');
@@ -140,9 +180,9 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads'), {
       res.setHeader('Content-Type', 'image/png');
     } else if (path.endsWith('.gif')) {
       res.setHeader('Content-Type', 'image/gif');
+    } else if (path.endsWith('.webp')) {
+      res.setHeader('Content-Type', 'image/webp');
     }
-    // Кэшируем на 1 день
-    res.setHeader('Cache-Control', 'public, max-age=86400');
   }
 }));
 
@@ -2752,31 +2792,92 @@ setInterval(async () => {
       });
 
       // =========================== API ДЛЯ ПРОФИЛЕЙ ============================
-      app.get('/api/users/:userId/profile', async (req, res) => {
-        try {
-          const { userId } = req.params;
-          
-          const [users] = await db.execute(`
-            SELECT u.user_id, u.name, u.surname, u.nick, u.email, u.role, u.created_at, u.is_online, u.last_seen, u.avatar_url, u.bio,
-                  COUNT(DISTINCT p.post_id) as posts_count,
-                  COUNT(DISTINCT f.friendship_id) as friends_count
-            FROM users u
-            LEFT JOIN posts p ON u.user_id = p.user_id AND p.is_published = TRUE
-            LEFT JOIN friendships f ON (u.user_id = f.user_id1 OR u.user_id = f.user_id2) AND f.status = 'accepted'
-            WHERE u.user_id = ?
-            GROUP BY u.user_id
-          `, [userId]);
+      // В файле server.js, в endpoint /api/users/:userId/profile
+// Исправленный endpoint для получения профиля
+app.get('/api/users/:userId/profile', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    
+    console.log('=== LOADING PROFILE API ===');
+    console.log('Requested user ID:', userId);
+    
+    const [users] = await db.execute(`
+      SELECT 
+        u.user_id, 
+        u.name, 
+        u.surname, 
+        u.nick, 
+        u.email, 
+        u.role, 
+        u.created_at, 
+        u.is_online, 
+        u.last_seen, 
+        u.avatar_url, 
+        u.banner_url,
+        u.bio,
+        COUNT(DISTINCT p.post_id) as posts_count,
+        COUNT(DISTINCT f.friendship_id) as friends_count
+      FROM users u
+      LEFT JOIN posts p ON u.user_id = p.user_id AND p.is_published = TRUE
+      LEFT JOIN friendships f ON (u.user_id = f.user_id1 OR u.user_id = f.user_id2) AND f.status = 'accepted'
+      WHERE u.user_id = ?
+      GROUP BY u.user_id
+    `, [userId]);
 
-          if (users.length === 0) {
-            return res.status(404).json({ error: 'Пользователь не найден' });
-          }
+    console.log('Users found:', users.length);
 
-          res.json(users[0]);
-        } catch (error) {
-          console.error(error);
-          res.status(500).json({ error: 'Database error' });
-        }
-      });
+    if (users.length === 0) {
+      console.log('User not found');
+      return res.status(404).json({ error: 'Пользователь не найден' });
+    }
+
+    const user = users[0];
+    
+    console.log('User data from DB:', {
+      user_id: user.user_id,
+      name: user.name,
+      avatar_url: user.avatar_url,
+      banner_url: user.banner_url
+    });
+    
+    // УБИРАЕМ добавление полных URL - возвращаем относительные пути
+    const userWithUrls = {
+      ...user,
+      // Оставляем относительные пути, фронтенд сам добавит базовый URL
+      avatar_url: user.avatar_url,
+      banner_url: user.banner_url
+    };
+
+    console.log('User data with relative URLs:', {
+      avatar_url: userWithUrls.avatar_url,
+      banner_url: userWithUrls.banner_url
+    });
+
+    res.json(userWithUrls);
+  } catch (error) {
+    console.error('Error loading profile:', error);
+    res.status(500).json({ error: 'Database error: ' + error.message });
+  }
+});
+
+// Endpoint для принудительного обновления статических файлов
+app.use('/uploads', express.static(path.join(__dirname, 'uploads'), {
+  setHeaders: (res, path) => {
+    // Отключаем кэширование для разработки
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+    
+    // Устанавливаем правильные заголовки для изображений
+    if (path.endsWith('.jpg') || path.endsWith('.jpeg')) {
+      res.setHeader('Content-Type', 'image/jpeg');
+    } else if (path.endsWith('.png')) {
+      res.setHeader('Content-Type', 'image/png');
+    } else if (path.endsWith('.gif')) {
+      res.setHeader('Content-Type', 'image/gif');
+    }
+  }
+}));
 
       app.get('/api/users/:userId/posts', async (req, res) => {
         try {
@@ -2841,95 +2942,207 @@ setInterval(async () => {
       });
 
  app.put('/api/users/:userId/profile', (req, res, next) => {
+  console.log('=== MULTER UPLOAD START ===');
+  console.log('Content-Type:', req.headers['content-type']);
+  console.log('Content-Length:', req.headers['content-length']);
+  
   uploadProfile(req, res, function (err) {
     if (err) {
       console.error('Multer error:', err);
+      console.error('Multer error code:', err.code);
+      console.error('Multer error field:', err.field);
       if (err.code === 'LIMIT_UNEXPECTED_FILE') {
         return res.status(400).json({ error: `Unexpected field: ${err.field}. Only 'avatar' and 'banner' are allowed.` });
       }
       return res.status(400).json({ error: err.message });
     }
+    console.log('Multer processing completed');
+    console.log('Files processed:', req.files);
+    console.log('Body fields:', req.body);
     next();
   });
 }, async (req, res) => {
+  let connection;
   try {
     const { userId } = req.params;
     const { name, bio } = req.body;
     const files = req.files;
     
-    console.log('Updating profile for user:', userId);
-    console.log('Form data:', { name, bio });
-    console.log('Files:', files);
+    console.log('=== PROFILE UPDATE START ===');
+    console.log('User ID:', userId);
+    console.log('Name:', name);
+    console.log('Bio:', bio);
+    console.log('Files object:', files);
+    
+    if (files) {
+      if (files.avatar) {
+        console.log('Avatar file details:', {
+          filename: files.avatar[0].filename,
+          originalname: files.avatar[0].originalname,
+          size: files.avatar[0].size,
+          mimetype: files.avatar[0].mimetype,
+          path: files.avatar[0].path
+        });
+      }
+      if (files.banner) {
+        console.log('Banner file details:', {
+          filename: files.banner[0].filename,
+          originalname: files.banner[0].originalname,
+          size: files.banner[0].size,
+          mimetype: files.banner[0].mimetype,
+          path: files.banner[0].path
+        });
+      }
+    }
 
-    let updateFields = [];
-    let params = [];
-
-    if (name !== undefined && name !== null) {
-      updateFields.push('name = ?');
-      params.push(name);
-    }
-    
-    if (files?.avatar) {
-      const avatarUrl = `/uploads/avatars/${files.avatar[0].filename}`;
-      updateFields.push('avatar_url = ?');
-      params.push(avatarUrl);
-      console.log('Avatar updated:', avatarUrl);
-    }
-    
-    if (files?.banner) {
-      const bannerUrl = `/uploads/banners/${files.banner[0].filename}`;
-      updateFields.push('banner_url = ?');
-      params.push(bannerUrl);
-      console.log('Banner updated:', bannerUrl);
-    }
-    
-    if (bio !== undefined && bio !== null) {
-      updateFields.push('bio = ?');
-      params.push(bio);
-    }
-    
-    if (updateFields.length === 0) {
-      return res.status(400).json({ error: 'Нет данных для обновления' });
-    }
-    
-    params.push(userId);
-    
-    const query = `UPDATE users SET ${updateFields.join(', ')}, updated_at = NOW() WHERE user_id = ?`;
-    console.log('Executing query:', query);
-    console.log('With params:', params);
-    
-    await db.execute(query, params);
-
-    // Получаем обновленные данные пользователя
-    const [users] = await db.execute(`
-      SELECT 
-        user_id, 
-        name, 
-        email, 
-        role, 
-        created_at, 
-        is_online, 
-        last_seen, 
-        avatar_url, 
-        banner_url, 
-        bio,
-        (SELECT COUNT(*) FROM posts WHERE user_id = ? AND is_published = TRUE) as posts_count,
-        (SELECT COUNT(*) FROM friendships WHERE (user_id1 = ? OR user_id2 = ?) AND status = 'accepted') as friends_count
-      FROM users 
-      WHERE user_id = ?
-    `, [userId, userId, userId, userId]);
-
-    if (users.length === 0) {
+    // Проверяем существование пользователя
+    const [existingUsers] = await db.execute('SELECT user_id FROM users WHERE user_id = ?', [userId]);
+    if (existingUsers.length === 0) {
       return res.status(404).json({ error: 'Пользователь не найден' });
     }
 
-    const updatedUser = users[0];
-    console.log('Profile updated successfully:', updatedUser);
+    // Начинаем транзакцию
+    connection = await db.getConnection();
+    await connection.beginTransaction();
 
-    res.json(updatedUser);
+    try {
+      let updateFields = ['updated_at = NOW()'];
+      let params = [];
+
+      if (name !== undefined) {
+        updateFields.push('name = ?');
+        params.push(name);
+      }
+      
+      if (bio !== undefined) {
+        updateFields.push('bio = ?');
+        params.push(bio);
+      }
+      
+      // Обработка аватара
+      if (files?.avatar) {
+        const avatarUrl = `/uploads/avatars/${files.avatar[0].filename}`;
+        updateFields.push('avatar_url = ?');
+        params.push(avatarUrl);
+        console.log('Setting avatar_url to:', avatarUrl);
+      }
+      
+      // Обработка баннера
+      if (files?.banner) {
+        const bannerUrl = `/uploads/banners/${files.banner[0].filename}`;
+        updateFields.push('banner_url = ?');
+        params.push(bannerUrl);
+        console.log('Setting banner_url to:', bannerUrl);
+      }
+      
+      if (updateFields.length === 0) {
+        await connection.rollback();
+        return res.status(400).json({ error: 'Нет данных для обновления' });
+      }
+      
+      params.push(userId);
+      
+      const query = `UPDATE users SET ${updateFields.join(', ')} WHERE user_id = ?`;
+      console.log('Executing SQL:', query);
+      console.log('With parameters:', params);
+      
+      const [result] = await connection.execute(query, params);
+      console.log('Database update result:', result);
+      console.log('Affected rows:', result.affectedRows);
+
+      // Получаем обновленные данные пользователя
+      const [users] = await connection.execute(`
+        SELECT 
+          user_id, 
+          name, 
+          email, 
+          role, 
+          created_at, 
+          is_online, 
+          last_seen, 
+          avatar_url, 
+          banner_url, 
+          bio
+        FROM users 
+        WHERE user_id = ?
+      `, [userId]);
+
+      if (users.length === 0) {
+        await connection.rollback();
+        return res.status(404).json({ error: 'Пользователь не найден после обновления' });
+      }
+
+      const updatedUser = users[0];
+      console.log('Final user data from database:', {
+        user_id: updatedUser.user_id,
+        name: updatedUser.name,
+        avatar_url: updatedUser.avatar_url,
+        banner_url: updatedUser.banner_url,
+        bio: updatedUser.bio
+      });
+      
+      // Фиксируем транзакцию
+      await connection.commit();
+      console.log('Transaction committed successfully');
+      
+      // Проверяем существование файлов на диске
+      if (files?.avatar) {
+        const avatarPath = path.join(__dirname, 'uploads/avatars', files.avatar[0].filename);
+        const avatarExists = fs.existsSync(avatarPath);
+        console.log('Avatar file exists on disk:', avatarExists, 'at path:', avatarPath);
+      }
+      
+      if (files?.banner) {
+        const bannerPath = path.join(__dirname, 'uploads/banners', files.banner[0].filename);
+        const bannerExists = fs.existsSync(bannerPath);
+        console.log('Banner file exists on disk:', bannerExists, 'at path:', bannerPath);
+      }
+
+      res.json(updatedUser);
+
+    } catch (transactionError) {
+      console.error('Transaction error:', transactionError);
+      await connection.rollback();
+      throw transactionError;
+    }
+
   } catch (error) {
-    console.error('Error updating profile:', error);
+    console.error('Profile update error:', error);
+    if (connection) await connection.rollback();
     res.status(500).json({ error: 'Database error: ' + error.message });
+  } finally {
+    if (connection) {
+      connection.release();
+      console.log('Database connection released');
+    }
+    console.log('=== PROFILE UPDATE END ===');
+  }
+});
+
+// Добавьте этот endpoint для диагностики
+app.get('/api/debug/files', async (req, res) => {
+  try {
+    const avatarsDir = path.join(__dirname, 'uploads/avatars');
+    const bannersDir = path.join(__dirname, 'uploads/banners');
+    
+    const avatarFiles = fs.existsSync(avatarsDir) ? fs.readdirSync(avatarsDir) : [];
+    const bannerFiles = fs.existsSync(bannersDir) ? fs.readdirSync(bannersDir) : [];
+    
+    res.json({
+      avatars: {
+        directory: avatarsDir,
+        exists: fs.existsSync(avatarsDir),
+        files: avatarFiles
+      },
+      banners: {
+        directory: bannersDir,
+        exists: fs.existsSync(bannersDir),
+        files: bannerFiles
+      }
+    });
+  } catch (error) {
+    console.error('Debug files error:', error);
+    res.status(500).json({ error: error.message });
   }
 });
 
