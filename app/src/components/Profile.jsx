@@ -7,11 +7,11 @@ const Profile = ({ currentUser, profileUserId = null }) => {
   const [error, setError] = useState('');
   const [isEditing, setIsEditing] = useState(false);
   const [avatarPreview, setAvatarPreview] = useState(null);
+  const [bannerPreview, setBannerPreview] = useState(null);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isEditPage, setIsEditPage] = useState(false);
-  const [bannerPreview, setBannerPreview] = useState(null);
   const fileInputRef = useRef(null);
   const bannerInputRef = useRef(null);
   
@@ -91,6 +91,13 @@ const Profile = ({ currentUser, profileUserId = null }) => {
       } else {
         setAvatarPreview(null);
       }
+
+      // Устанавливаем превью баннера если есть
+      if (userData.banner_url) {
+        setBannerPreview(`${API_BASE_URL}${userData.banner_url}?t=${Date.now()}`);
+      } else {
+        setBannerPreview(null);
+      }
     } catch (error) {
       console.error('Error loading profile:', error);
       setError(error.message);
@@ -134,6 +141,7 @@ const Profile = ({ currentUser, profileUserId = null }) => {
   const handleCancel = () => {
     setIsEditing(false);
     setAvatarPreview(user?.avatar_url ? `${API_BASE_URL}${user.avatar_url}` : null);
+    setBannerPreview(user?.banner_url ? `${API_BASE_URL}${user.banner_url}` : null);
     if (user) {
       setEditForm({
         name: user.name || '',
@@ -157,6 +165,11 @@ const Profile = ({ currentUser, profileUserId = null }) => {
         formData.append('avatar', fileInputRef.current.files[0]);
       }
 
+      // Добавляем файл баннера если выбран новый
+      if (bannerInputRef.current?.files[0]) {
+        formData.append('banner', bannerInputRef.current.files[0]);
+      }
+
       const xhr = new XMLHttpRequest();
       
       xhr.upload.addEventListener('progress', (e) => {
@@ -178,13 +191,14 @@ const Profile = ({ currentUser, profileUserId = null }) => {
           const updatedCurrentUser = {
             ...savedUser,
             name: updatedUser.name,
-            avatar_url: updatedUser.avatar_url
+            avatar_url: updatedUser.avatar_url,
+            banner_url: updatedUser.banner_url
           };
           localStorage.setItem('currentUser', JSON.stringify(updatedCurrentUser));
           
           // Сбрасываем превью
           setAvatarPreview(updatedUser.avatar_url ? `${API_BASE_URL}${updatedUser.avatar_url}?t=${Date.now()}` : null);
-          setBannerPreview(null);
+          setBannerPreview(updatedUser.banner_url ? `${API_BASE_URL}${updatedUser.banner_url}?t=${Date.now()}` : null);
           setUploadProgress(0);
         } else {
           setError('Ошибка сохранения профиля');
@@ -210,7 +224,7 @@ const Profile = ({ currentUser, profileUserId = null }) => {
   };
 
   const handleAvatarClick = () => {
-    if (isEditing) {
+    if (isEditing || isEditPage) {
       fileInputRef.current?.click();
     }
   };
@@ -292,7 +306,7 @@ const Profile = ({ currentUser, profileUserId = null }) => {
 
   const handleBackToProfile = () => {
     setIsEditPage(false);
-    setBannerPreview(null);
+    setBannerPreview(user?.banner_url ? `${API_BASE_URL}${user.banner_url}` : null);
     setAvatarPreview(user?.avatar_url ? `${API_BASE_URL}${user.avatar_url}` : null);
   };
 
@@ -406,9 +420,25 @@ const Profile = ({ currentUser, profileUserId = null }) => {
           <div 
             className="banner-overlay"
             style={{
-              backgroundImage: bannerPreview ? `url(${bannerPreview})` : 'none'
+              backgroundImage: bannerPreview ? `url(${bannerPreview})` : (user?.banner_url ? `url(${API_BASE_URL}${user.banner_url})` : 'none')
             }}
           >
+            <div className="banner-controls">
+              <button 
+                className="banner-upload-button"
+                onClick={handleBannerClick}
+              >
+                📷 Сменить баннер
+              </button>
+              {(bannerPreview || user?.banner_url) && (
+                <button 
+                  className="banner-remove-button"
+                  onClick={removeBanner}
+                >
+                  ❌ Удалить
+                </button>
+              )}
+            </div>
           </div>
           
           <input
@@ -425,10 +455,36 @@ const Profile = ({ currentUser, profileUserId = null }) => {
               className="avatar editable"
               onClick={handleAvatarClick}
               style={{
-                backgroundImage: avatarPreview ? `url(${avatarPreview})` : 'none'
+                backgroundImage: avatarPreview ? `url(${avatarPreview})` : (user?.avatar_url ? `url(${API_BASE_URL}${user.avatar_url})` : 'none')
               }}
             >
-              {!avatarPreview && (user.name ? user.name.charAt(0).toUpperCase() : 'U')}
+              {!avatarPreview && !user?.avatar_url && (user.name ? user.name.charAt(0).toUpperCase() : 'U')}
+            </div>
+            
+            <div className="avatar-controls">
+              <input
+                type="file"
+                ref={fileInputRef}
+                onChange={handleAvatarChange}
+                accept="image/*"
+                style={{ display: 'none' }}
+              />
+              <button 
+                type="button" 
+                onClick={handleAvatarClick}
+                className="avatar-upload-button"
+              >
+                Сменить аватар
+              </button>
+              {(avatarPreview || user?.avatar_url) && (
+                <button 
+                  type="button" 
+                  onClick={removeAvatar}
+                  className="avatar-remove-button"
+                >
+                  Удалить аватар
+                </button>
+              )}
             </div>
             
             <div className="user-name-section">
@@ -437,35 +493,11 @@ const Profile = ({ currentUser, profileUserId = null }) => {
               </div>
               
               <div className="edit-controls">
-                <input
-                  type="file"
-                  ref={fileInputRef}
-                  onChange={handleAvatarChange}
-                  accept="image/*"
-                  style={{ display: 'none' }}
-                />
                 <button 
-                  type="button" 
-                  onClick={handleAvatarClick}
-                  className="edit-control-button avatar-button"
+                  onClick={handleBackToProfile}
+                  className="back-to-profile-button"
                 >
-                  <span className="button-icon">👤</span>
-                  <span className="button-text">Сменить аватар</span>
-                </button>
-                
-                <input
-                  type="file"
-                  ref={bannerInputRef}
-                  onChange={handleBannerChange}
-                  accept="image/*"
-                  style={{ display: 'none' }}
-                />
-                <button 
-                  className="edit-control-button banner-button"
-                  onClick={handleBannerClick}
-                >
-                  <span className="button-icon">🖼️</span>
-                  <span className="button-text">Сменить баннер</span>
+                  ← Назад к профилю
                 </button>
               </div>
             </div>
@@ -475,6 +507,16 @@ const Profile = ({ currentUser, profileUserId = null }) => {
         {error && (
           <div className="error-message">
             {error}
+          </div>
+        )}
+
+        {uploadProgress > 0 && uploadProgress < 100 && (
+          <div className="upload-progress">
+            <div 
+              className="progress-bar" 
+              style={{ width: `${uploadProgress}%` }}
+            ></div>
+            <span>Загрузка: {Math.round(uploadProgress)}%</span>
           </div>
         )}
 
@@ -544,6 +586,12 @@ const Profile = ({ currentUser, profileUserId = null }) => {
   return (
     <div className="profile-container">
       <div className="profile-banner">
+        <div 
+          className="banner-overlay"
+          style={{
+            backgroundImage: user?.banner_url ? `url(${API_BASE_URL}${user.banner_url})` : 'none'
+          }}
+        ></div>
         
         {/* Аватар пользователя, наполовину в баннере */}
         <div className="profile-avatar-section">
@@ -551,10 +599,10 @@ const Profile = ({ currentUser, profileUserId = null }) => {
             className={`avatar ${isEditing ? 'editable' : ''}`}
             onClick={handleAvatarClick}
             style={{
-              backgroundImage: avatarPreview ? `url(${avatarPreview})` : 'none'
+              backgroundImage: avatarPreview ? `url(${avatarPreview})` : (user?.avatar_url ? `url(${API_BASE_URL}${user.avatar_url})` : 'none')
             }}
           >
-            {!avatarPreview && (user.name ? user.name.charAt(0).toUpperCase() : 'U')}
+            {!avatarPreview && !user?.avatar_url && (user.name ? user.name.charAt(0).toUpperCase() : 'U')}
           </div>
           
           {isEditing && (
@@ -573,7 +621,7 @@ const Profile = ({ currentUser, profileUserId = null }) => {
               >
                 Сменить фото
               </button>
-              {avatarPreview && (
+              {(avatarPreview || user?.avatar_url) && (
                 <button 
                   type="button" 
                   onClick={removeAvatar}
@@ -596,59 +644,36 @@ const Profile = ({ currentUser, profileUserId = null }) => {
             <p className="registration-date">Зарегистрирован {formatDate(user.created_at)}</p>
             
             {/* Кебаб-меню */}
-            <div className="kebab-menu">
-              <button 
-                className="kebab-button"
-                onClick={toggleMenu}
-                aria-label="Меню"
-              >
-                <span className="kebab-dot"></span>
-                <span className="kebab-dot"></span>
-                <span className="kebab-dot"></span>
-              </button>
-              
-              {isMenuOpen && (
-                <div className="dropdown-menu">
-                  {isOwnProfile ? (
-                    <>
-                      <button 
-                        className="menu-item"
-                        onClick={handleEdit}
-                      >
-                        Редактировать профиль
-                      </button>
-                      <button 
-                        className="menu-item"
-                        onClick={handleAdditionalInfo}
-                      >
-                        Доп. информация
-                      </button>
-                    </>
-                  ) : (
-                    <>
-                      <button 
-                        className="menu-item"
-                        onClick={handleAdditionalInfo}
-                      >
-                        Доп. информация
-                      </button>
-                      <button 
-                        className="menu-item danger"
-                        onClick={handleBlockUser}
-                      >
-                        Заблокировать
-                      </button>
-                      <button 
-                        className="menu-item danger"
-                        onClick={handleIgnoreUser}
-                      >
-                        Игнорировать
-                      </button>
-                    </>
-                  )}
-                </div>
-              )}
-            </div>
+            {isOwnProfile && (
+              <div className="kebab-menu">
+                <button 
+                  className="kebab-button"
+                  onClick={toggleMenu}
+                  aria-label="Меню"
+                >
+                  <span className="kebab-dot"></span>
+                  <span className="kebab-dot"></span>
+                  <span className="kebab-dot"></span>
+                </button>
+                
+                {isMenuOpen && (
+                  <div className="dropdown-menu">
+                    <button 
+                      className="menu-item"
+                      onClick={handleEdit}
+                    >
+                      Редактировать профиль
+                    </button>
+                    <button 
+                      className="menu-item"
+                      onClick={handleAdditionalInfo}
+                    >
+                      Доп. информация
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {uploadProgress > 0 && uploadProgress < 100 && (
@@ -718,7 +743,21 @@ const Profile = ({ currentUser, profileUserId = null }) => {
             </div>
           ) : (
             <div className="profile-details">
-              {/* Информация профиля */}
+              <div className="bio-section">
+                <h4>О себе</h4>
+                <p>{user.bio || 'Пользователь еще не добавил информацию о себе.'}</p>
+              </div>
+              
+              <div className="stats-section">
+                <div className="stat-item">
+                  <span className="stat-number">{user.posts_count || 0}</span>
+                  <span className="stat-label">Публикаций</span>
+                </div>
+                <div className="stat-item">
+                  <span className="stat-number">{user.friends_count || 0}</span>
+                  <span className="stat-label">Друзей</span>
+                </div>
+              </div>
             </div>
           )}
         </div>
@@ -836,6 +875,16 @@ const Profile = ({ currentUser, profileUserId = null }) => {
               <div className="modal-detail-item">
                 <label>Количество постов:</label>
                 <span>{user?.posts_count || 0}</span>
+              </div>
+
+              <div className="modal-detail-item">
+                <label>Друзей:</label>
+                <span>{user?.friends_count || 0}</span>
+              </div>
+
+              <div className="modal-detail-item">
+                <label>Дата регистрации:</label>
+                <span>{formatDate(user?.created_at)}</span>
               </div>
             </div>
           </div>

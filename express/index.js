@@ -59,6 +59,77 @@
       });
 
       // =========================== ОБСЛУЖИВАНИЕ СТАТИЧЕСКИХ ФАЙЛОВ ============================
+
+
+      const profileStorage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    if (file.fieldname === 'avatar') {
+      const dir = 'uploads/avatars/';
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+      cb(null, dir);
+    } else if (file.fieldname === 'banner') {
+      const dir = 'uploads/banners/';
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+      cb(null, dir);
+    } else {
+      cb(new Error('Unexpected field'), false);
+    }
+  },
+  filename: function (req, file, cb) {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname));
+  }
+});
+
+const uploadProfile = multer({ 
+  storage: profileStorage,
+  limits: {
+    fileSize: 5 * 1024 * 1024 // 5MB
+  },
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype.startsWith('image/')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only image files are allowed!'), false);
+    }
+  }
+}).fields([
+  { name: 'avatar', maxCount: 1 },
+  { name: 'banner', maxCount: 1 }
+]);
+
+      const bannerStorage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    cb(null, 'uploads/banners/')
+  },
+  filename: function (req, file, cb) {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    cb(null, 'banner-' + uniqueSuffix + path.extname(file.originalname));
+  }
+});
+
+const uploadBanner = multer({ 
+  storage: bannerStorage,
+  limits: {
+    fileSize: 5 * 1024 * 1024 
+  },
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype.startsWith('image/')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only image files are allowed for banners!'), false);
+    }
+  }
+});
+
+const bannersDir = path.join(__dirname, 'uploads/banners');
+if (!fs.existsSync(bannersDir)) {
+  fs.mkdirSync(bannersDir, { recursive: true });
+}
  
 app.use('/uploads', express.static(path.join(__dirname, 'uploads'), {
   setHeaders: (res, path) => {
@@ -94,6 +165,19 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads'), {
       if (!fs.existsSync(audioDir)) {
         fs.mkdirSync(audioDir, { recursive: true });
       }
+
+      // Обслуживание статических файлов
+app.use('/uploads/avatars', express.static(path.join(__dirname, 'uploads/avatars'), {
+  setHeaders: (res, path) => {
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+  }
+}));
+
+app.use('/uploads/banners', express.static(path.join(__dirname, 'uploads/banners'), {
+  setHeaders: (res, path) => {
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+  }
+}));
 
       const audioStorage = multer.diskStorage({
         destination: function (req, file, cb) {
@@ -2756,60 +2840,98 @@ setInterval(async () => {
         }
       });
 
-      app.put('/api/users/:userId/profile', uploadAvatar.single('avatar'), async (req, res) => {
-        try {
-          const { userId } = req.params;
-          const { name, bio } = req.body;
-          
-          let updateFields = [];
-          let params = [];
+ app.put('/api/users/:userId/profile', (req, res, next) => {
+  uploadProfile(req, res, function (err) {
+    if (err) {
+      console.error('Multer error:', err);
+      if (err.code === 'LIMIT_UNEXPECTED_FILE') {
+        return res.status(400).json({ error: `Unexpected field: ${err.field}. Only 'avatar' and 'banner' are allowed.` });
+      }
+      return res.status(400).json({ error: err.message });
+    }
+    next();
+  });
+}, async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { name, bio } = req.body;
+    const files = req.files;
+    
+    console.log('Updating profile for user:', userId);
+    console.log('Form data:', { name, bio });
+    console.log('Files:', files);
 
-          if (name !== undefined) {
-            updateFields.push('name = ?');
-            params.push(name);
-          }
-          
-          if (req.file) {
-            const avatarUrl = `/uploads/avatars/${req.file.filename}`;
-            updateFields.push('avatar_url = ?');
-            params.push(avatarUrl);
-          }
-          
-          if (bio !== undefined) {
-            updateFields.push('bio = ?');
-            params.push(bio);
-          }
-          
-          if (updateFields.length === 0) {
-            return res.status(400).json({ error: 'Нет данных для обновления' });
-          }
-          
-          params.push(userId);
-          
-          await db.execute(
-            `UPDATE users SET ${updateFields.join(', ')} WHERE user_id = ?`,
-            params
-          );
+    let updateFields = [];
+    let params = [];
 
-          const [users] = await db.execute(`
-            SELECT user_id, name, email, role, created_at, is_online, last_seen, avatar_url, bio,
-                  (SELECT COUNT(*) FROM posts WHERE user_id = ? AND is_published = TRUE) as posts_count,
-                  (SELECT COUNT(*) FROM friendships WHERE (user_id1 = ? OR user_id2 = ?) AND status = 'accepted') as friends_count
-            FROM users WHERE user_id = ?
-          `, [userId, userId, userId, userId]);
+    if (name !== undefined && name !== null) {
+      updateFields.push('name = ?');
+      params.push(name);
+    }
+    
+    if (files?.avatar) {
+      const avatarUrl = `/uploads/avatars/${files.avatar[0].filename}`;
+      updateFields.push('avatar_url = ?');
+      params.push(avatarUrl);
+      console.log('Avatar updated:', avatarUrl);
+    }
+    
+    if (files?.banner) {
+      const bannerUrl = `/uploads/banners/${files.banner[0].filename}`;
+      updateFields.push('banner_url = ?');
+      params.push(bannerUrl);
+      console.log('Banner updated:', bannerUrl);
+    }
+    
+    if (bio !== undefined && bio !== null) {
+      updateFields.push('bio = ?');
+      params.push(bio);
+    }
+    
+    if (updateFields.length === 0) {
+      return res.status(400).json({ error: 'Нет данных для обновления' });
+    }
+    
+    params.push(userId);
+    
+    const query = `UPDATE users SET ${updateFields.join(', ')}, updated_at = NOW() WHERE user_id = ?`;
+    console.log('Executing query:', query);
+    console.log('With params:', params);
+    
+    await db.execute(query, params);
 
-          if (users.length === 0) {
-            return res.status(404).json({ error: 'Пользователь не найден' });
-          }
+    // Получаем обновленные данные пользователя
+    const [users] = await db.execute(`
+      SELECT 
+        user_id, 
+        name, 
+        email, 
+        role, 
+        created_at, 
+        is_online, 
+        last_seen, 
+        avatar_url, 
+        banner_url, 
+        bio,
+        (SELECT COUNT(*) FROM posts WHERE user_id = ? AND is_published = TRUE) as posts_count,
+        (SELECT COUNT(*) FROM friendships WHERE (user_id1 = ? OR user_id2 = ?) AND status = 'accepted') as friends_count
+      FROM users 
+      WHERE user_id = ?
+    `, [userId, userId, userId, userId]);
 
-          const updatedUser = users[0];
+    if (users.length === 0) {
+      return res.status(404).json({ error: 'Пользователь не найден' });
+    }
 
-          res.json(updatedUser);
-        } catch (error) {
-          console.error('Error updating profile:', error);
-          res.status(500).json({ error: 'Database error: ' + error.message });
-        }
-      });
+    const updatedUser = users[0];
+    console.log('Profile updated successfully:', updatedUser);
+
+    res.json(updatedUser);
+  } catch (error) {
+    console.error('Error updating profile:', error);
+    res.status(500).json({ error: 'Database error: ' + error.message });
+  }
+});
 
      // =========================== API ДЛЯ АВАТАРОВ ============================
 // Исправленный endpoint для получения аватара
