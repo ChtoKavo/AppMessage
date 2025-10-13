@@ -25,16 +25,15 @@ const ensureDirectories = () => {
     'uploads/audio',
     'uploads/images',
     'uploads/videos',
-    'uploads/files'
+    'uploads/files',
+    'uploads/gallery' 
   ];
   
-  directories.forEach(dir => {
+   directories.forEach(dir => {
     const fullPath = path.join(__dirname, dir);
     if (!fs.existsSync(fullPath)) {
       fs.mkdirSync(fullPath, { recursive: true });
       console.log(`Created directory: ${fullPath}`);
-    } else {
-      console.log(`Directory exists: ${fullPath}`);
     }
     
     // Проверяем права на запись
@@ -94,6 +93,12 @@ ensureDirectories();
 
       // =========================== ОБСЛУЖИВАНИЕ СТАТИЧЕСКИХ ФАЙЛОВ ============================
 
+
+      app.use('/uploads/gallery', express.static(path.join(__dirname, 'uploads/gallery'), {
+  setHeaders: (res, path) => {
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+  }
+}));
 
       const profileStorage = multer.diskStorage({
   destination: function (req, file, cb) {
@@ -1413,6 +1418,197 @@ app.post('/api/users/statuses', async (req, res) => {
   }
 });
 
+
+// Получение галереи пользователя - ПОЛНОСТЬЮ ПЕРЕПИСАННЫЙ
+app.get('/api/users/:userId/gallery', async (req, res) => {
+  let connection;
+  try {
+    const { userId } = req.params;
+    const { limit = 3 } = req.query;
+    
+    console.log('=== GALLERY API CALL ===');
+    console.log('User ID:', userId);
+    console.log('Limit:', limit);
+
+    // Проверяем валидность userId
+    if (!userId || isNaN(userId)) {
+      return res.status(400).json({ 
+        error: 'Invalid user ID',
+        received: userId 
+      });
+    }
+
+    const numericUserId = parseInt(userId);
+    const numericLimit = parseInt(limit);
+
+    // Получаем соединение
+    connection = await db.getConnection();
+
+    // Проверяем существование пользователя
+    const [users] = await connection.execute(
+      'SELECT user_id, name FROM users WHERE user_id = ?',
+      [numericUserId]
+    );
+
+    if (users.length === 0) {
+      return res.status(404).json({ 
+        error: 'User not found',
+        user_id: numericUserId
+      });
+    }
+
+    console.log('User found:', users[0].name);
+
+    // Получаем фото из галереи
+    const [photos] = await connection.execute(`
+      SELECT 
+        gallery_id,
+        user_id,
+        image_url,
+        thumbnail_url,
+        description,
+        created_at
+      FROM user_gallery 
+      WHERE user_id = ?
+      ORDER BY created_at DESC
+      LIMIT ?
+    `, [numericUserId, numericLimit]);
+
+    // Получаем общее количество фото
+    const [countResult] = await connection.execute(
+      'SELECT COUNT(*) as total FROM user_gallery WHERE user_id = ?',
+      [numericUserId]
+    );
+
+    console.log(`Found ${photos.length} photos for user ${numericUserId}`);
+
+    const response = {
+      photos: photos || [],
+      total_count: countResult[0]?.total || 0,
+      user: {
+        id: users[0].user_id,
+        name: users[0].name
+      }
+    };
+
+    console.log('Sending response:', response);
+    res.json(response);
+
+  } catch (error) {
+    console.error('❌ CRITICAL ERROR in gallery endpoint:');
+    console.error('Error message:', error.message);
+    console.error('Error code:', error.code);
+    console.error('Error stack:', error.stack);
+    
+    res.status(500).json({ 
+      error: 'Internal server error',
+      message: error.message,
+      code: error.code
+    });
+  } finally {
+    if (connection) {
+      connection.release();
+    }
+  }
+});
+
+// Загрузка фото в галерею
+const galleryStorage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    const dir = 'uploads/gallery/';
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    cb(null, dir);
+  },
+  filename: function (req, file, cb) {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    cb(null, 'gallery-' + uniqueSuffix + path.extname(file.originalname));
+  }
+});
+
+const uploadGallery = multer({ 
+  storage: galleryStorage,
+  limits: {
+    fileSize: 10 * 1024 * 1024 // 10MB
+  },
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype.startsWith('image/')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only image files are allowed!'), false);
+    }
+  }
+});
+
+app.post('/api/gallery/upload', uploadGallery.single('image'), async (req, res) => {
+  try {
+    const { userId, description = '' } = req.body;
+    
+    if (!req.file) {
+      return res.status(400).json({ error: 'Файл не загружен' });
+    }
+
+    if (!userId) {
+      return res.status(400).json({ error: 'ID пользователя обязателен' });
+    }
+
+    const image_url = `/uploads/gallery/${req.file.filename}`;
+
+    const [result] = await db.execute(
+      'INSERT INTO user_gallery (user_id, image_url, description) VALUES (?, ?, ?)',
+      [userId, image_url, description]
+    );
+
+    const [photos] = await db.execute(
+      'SELECT * FROM user_gallery WHERE gallery_id = ?',
+      [result.insertId]
+    );
+
+    res.json({
+      message: 'Фото успешно загружено',
+      photo: photos[0]
+    });
+
+  } catch (error) {
+    console.error('Error uploading to gallery:', error);
+    res.status(500).json({ error: 'Ошибка загрузки фото' });
+  }
+});
+
+// Удаление фото из галереи
+app.delete('/api/gallery/:photoId', async (req, res) => {
+  try {
+    const { photoId } = req.params;
+    const { userId } = req.body;
+
+    const [photos] = await db.execute(
+      'SELECT * FROM user_gallery WHERE gallery_id = ? AND user_id = ?',
+      [photoId, userId]
+    );
+
+    if (photos.length === 0) {
+      return res.status(404).json({ error: 'Фото не найдено или нет прав для удаления' });
+    }
+
+    // Удаляем файл с диска
+    const photoPath = path.join(__dirname, photos[0].image_url);
+    if (fs.existsSync(photoPath)) {
+      fs.unlinkSync(photoPath);
+    }
+
+    await db.execute(
+      'DELETE FROM user_gallery WHERE gallery_id = ?',
+      [photoId]
+    );
+
+    res.json({ message: 'Фото успешно удалено' });
+  } catch (error) {
+    console.error('Error deleting gallery photo:', error);
+    res.status(500).json({ error: 'Ошибка удаления фото' });
+  }
+});
+
 // API для обновления статуса
 app.put('/api/users/status', async (req, res) => {
   try {
@@ -2225,6 +2421,110 @@ setInterval(async () => {
           res.status(500).json({ error: 'Database error: ' + error.message });
         }
       });
+
+      // Получение списка друзей
+app.get('/api/users/:userId/friends', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    
+    const [friends] = await db.execute(`
+      SELECT 
+        u.user_id,
+        u.name,
+        u.email,
+        u.avatar_url,
+        u.is_online,
+        u.last_seen
+      FROM friendships f
+      JOIN users u ON (
+        (f.user_id1 = ? AND u.user_id = f.user_id2) OR 
+        (f.user_id2 = ? AND u.user_id = f.user_id1)
+      )
+      WHERE f.status = 'accepted'
+      ORDER BY u.is_online DESC, u.name ASC
+    `, [userId, userId]);
+
+    res.json(friends);
+  } catch (error) {
+    console.error('Error loading friends:', error);
+    res.status(500).json({ error: 'Database error' });
+  }
+});
+
+// Получение списка подписчиков
+app.get('/api/users/:userId/followers', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    
+    const [followers] = await db.execute(`
+      SELECT 
+        u.user_id,
+        u.name,
+        u.email,
+        u.avatar_url,
+        u.is_online,
+        u.last_seen
+      FROM followers f
+      JOIN users u ON f.follower_id = u.user_id
+      WHERE f.following_id = ?
+      ORDER BY f.created_at DESC
+    `, [userId]);
+
+    res.json(followers);
+  } catch (error) {
+    console.error('Error loading followers:', error);
+    res.status(500).json({ error: 'Database error' });
+  }
+});
+
+// Проверка статуса подписки
+app.get('/api/follow/check/:userId/:targetUserId', async (req, res) => {
+  try {
+    const { userId, targetUserId } = req.params;
+    
+    const [follows] = await db.execute(
+      'SELECT 1 as is_following FROM followers WHERE follower_id = ? AND following_id = ?',
+      [userId, targetUserId]
+    );
+
+    res.json({ is_following: follows.length > 0 });
+  } catch (error) {
+    console.error('Error checking follow status:', error);
+    res.status(500).json({ error: 'Database error' });
+  }
+});
+
+// Подписка/отписка
+app.post('/api/follow/:targetUserId', async (req, res) => {
+  try {
+    const { targetUserId } = req.params;
+    const { userId } = req.body;
+
+    const [existing] = await db.execute(
+      'SELECT * FROM followers WHERE follower_id = ? AND following_id = ?',
+      [userId, targetUserId]
+    );
+
+    if (existing.length > 0) {
+      // Отписка
+      await db.execute(
+        'DELETE FROM followers WHERE follower_id = ? AND following_id = ?',
+        [userId, targetUserId]
+      );
+      res.json({ is_following: false, message: 'Отписался' });
+    } else {
+      // Подписка
+      await db.execute(
+        'INSERT INTO followers (follower_id, following_id) VALUES (?, ?)',
+        [userId, targetUserId]
+      );
+      res.json({ is_following: true, message: 'Подписался' });
+    }
+  } catch (error) {
+    console.error('Error following user:', error);
+    res.status(500).json({ error: 'Database error' });
+  }
+});
 
       app.post('/api/posts/:postId/like', async (req, res) => {
         try {
