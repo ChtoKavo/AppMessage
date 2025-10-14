@@ -414,13 +414,19 @@
 
 .post-content {
   margin-bottom: 16px;
+  /* align content start with author name (avatar 48px + 12px gap) */
+  margin-left: 60px;
+  width: calc(100% - 60px);
+  max-width: 620px; /* constrain readable width for post text */
 }
 
 .post-content p {
-  margin: 0 0 16px 0;
+  margin: 0 0 12px 0;
   color: #2c3e50;
   line-height: 1.7;
   font-size: 16px;
+  text-indent: 0;
+  padding-left: 0;
 }
 
 .post-image {
@@ -457,14 +463,14 @@
 
 .post-actions {
   display: flex;
-  gap: 6px;
+  gap: 8px;
+  justify-content: flex-start;
 }
 
 .like-btn, .comment-btn, .share-btn {
-  flex: 1;
   background: #ffffff;
   border: 1px solid #e8ecef;
-  padding: 6px 10px;
+  padding: 6px 6px;
   border-radius: 8px;
   cursor: pointer;
   font-size: 12px;
@@ -473,7 +479,9 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  gap: 4px;
+  width: 50px;
+  min-width: 50px;
 }
 
 /* counters inside buttons */

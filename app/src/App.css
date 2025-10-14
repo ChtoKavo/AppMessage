@@ -5,6 +5,11 @@
   box-sizing: border-box;
 }
 
+/* Ensure paragraphs are left-aligned by default */
+p {
+  text-align: left;
+}
+
 .App {
   min-height: 100vh;
   position: relative;
@@ -188,6 +193,31 @@
 /* Header search */
 .header-search {
   margin-left: 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.notification-btn {
+  background: transparent;
+  border: 1px solid #e2e8f0;
+  padding: 4px;
+  border-radius: 8px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.2s ease, border-color 0.2s ease;
+}
+
+.notification-btn:hover {
+  background: rgba(255, 167, 5, 0.08);
+  border-color: #FFA705;
+}
+
+.notification-icon-image {
+  width: 20px;
+  height: 20px;
+  object-fit: contain;
 }
 
 .header-search-input {

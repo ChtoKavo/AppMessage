@@ -135,6 +135,9 @@ function MainApp({ currentUser, activeTab, setActiveTab, sidebarOpen, setSidebar
                 className="header-search-input" 
                 placeholder="Поиск..." 
               />
+              <button className="notification-btn" title="Уведомления">
+                <img className="notification-icon-image" src={Notification} alt="" />
+              </button>
             </div>
           </div>
 
@@ -206,13 +209,6 @@ function MainApp({ currentUser, activeTab, setActiveTab, sidebarOpen, setSidebar
           >
             <span className="sidebar-icon"><img src={Friend} alt="" /></span>
             <span className="sidebar-label">Друзья</span>
-          </button>
-          <button 
-            className={`sidebar-item ${activeTab === 'notifications' ? 'active' : ''}`}
-            onClick={() => handleTabChange('notifications')}
-          >
-            <span className="sidebar-icon"><img src={Notification} alt="" /></span>
-            <span className="sidebar-label">Уведомления</span>
           </button>
           <button 
             className={`sidebar-item ${activeTab === 'profile' ? 'active' : ''}`}
