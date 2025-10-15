@@ -45,39 +45,41 @@ const Messenger = ({ currentUser }) => {
     }
   }, [chatId, currentUser]);
 
-
   const loadParticipantAvatars = useCallback(async (chat) => {
-  if (!chat || !chat.participant_ids) return;
-  
-  try {
-    const participantIds = chat.participant_ids.split(',').map(id => parseInt(id.trim()));
-    const avatars = {};
+    if (!chat || !chat.participant_ids) return;
     
-    for (const participantId of participantIds) {
-      if (participantId === currentUser.user_id) continue;
+    try {
+      const participantIds = chat.participant_ids.split(',').map(id => parseInt(id.trim()));
+      const avatars = {};
       
-      try {
-        const response = await fetch(`${API_BASE_URL}/api/users/${participantId}/avatar`);
-        if (response.ok) {
-          // Получаем бинарные данные аватара
-          const avatarBlob = await response.blob();
-          const avatarUrl = URL.createObjectURL(avatarBlob);
-          avatars[participantId] = avatarUrl;
-        } else {
-          // Если аватар не найден, используем null для заглушки
+      for (const participantId of participantIds) {
+        if (participantId === currentUser.user_id) continue;
+        
+        try {
+          const response = await fetch(`${API_BASE_URL}/api/users/${participantId}/avatar`);
+          if (response.ok) {
+            const avatarBlob = await response.blob();
+            // Проверяем, что это действительно изображение
+            if (avatarBlob.type.startsWith('image/')) {
+              const avatarUrl = URL.createObjectURL(avatarBlob);
+              avatars[participantId] = avatarUrl;
+            } else {
+              avatars[participantId] = null;
+            }
+          } else {
+            avatars[participantId] = null;
+          }
+        } catch (error) {
+          console.error(`Ошибка загрузки аватара пользователя ${participantId}:`, error);
           avatars[participantId] = null;
         }
-      } catch (error) {
-        console.error(`Ошибка загрузки аватара пользователя ${participantId}:`, error);
-        avatars[participantId] = null;
       }
+      
+      setParticipantAvatars(avatars);
+    } catch (error) {
+      console.error('Ошибка загрузки аватаров участников:', error);
     }
-    
-    setParticipantAvatars(avatars);
-  } catch (error) {
-    console.error('Ошибка загрузки аватаров участников:', error);
-  }
-}, [currentUser, API_BASE_URL]);
+  }, [currentUser, API_BASE_URL]);
 
   const setupWebSocket = () => {
     if (!currentUser) return;
@@ -145,7 +147,6 @@ const Messenger = ({ currentUser }) => {
       const currentChat = chats.find(chat => chat.chat_id === parseInt(chatId));
       setActiveChat(currentChat);
       
-      // Загружаем аватары участников после установки активного чата
       if (currentChat) {
         loadParticipantAvatars(currentChat);
       }
@@ -192,15 +193,18 @@ const Messenger = ({ currentUser }) => {
     navigate('/chats');
   };
 
-  // Функция для получения аватара пользователя
+  // Улучшенная функция для получения аватара пользователя
   const getUserAvatar = (userId, userName = '') => {
-    // Если есть загруженный аватар - используем его
-    if (participantAvatars[userId]) {
-      return participantAvatars[userId];
+    return participantAvatars[userId] || null;
+  };
+
+  // Функция для получения инициалов пользователя
+  const getUserInitials = (userName = '') => {
+    const names = userName.trim().split(' ');
+    if (names.length === 1) {
+      return names[0].charAt(0).toUpperCase();
     }
-    
-    // Иначе используем заглушку с первой буквой имени
-    return null;
+    return (names[0].charAt(0) + names[names.length - 1].charAt(0)).toUpperCase();
   };
 
   // Функция для показа контекстного меню
@@ -456,25 +460,25 @@ const Messenger = ({ currentUser }) => {
     return '📎';
   };
 
- const getFileTypeText = (fileType, fileName = '') => {
-  if (fileType.startsWith('image/')) return 'Изображение';
-  if (fileType.startsWith('video/')) return 'Видео';
-  if (fileType === 'application/pdf') return 'PDF документ';
-  
-  const ext = fileName.split('.').pop()?.toLowerCase();
-  const extensionMap = {
-    'jpg': 'Изображение', 'jpeg': 'Изображение', 'png': 'Изображение', 
-    'gif': 'Изображение', 'webp': 'Изображение', 'bmp': 'Изображение',
-    'mp4': 'Видео', 'avi': 'Видео', 'mov': 'Видео', 'wmv': 'Видео',
-    'doc': 'Документ Word', 'docx': 'Документ Word',
-    'xls': 'Таблица Excel', 'xlsx': 'Таблица Excel',
-    'ppt': 'Презентация', 'pptx': 'Презентация',
-    'zip': 'Архив', 'rar': 'Архив', '7z': 'Архив',
-    'txt': 'Текстовый файл', 'csv': 'CSV файл'
+  const getFileTypeText = (fileType, fileName = '') => {
+    if (fileType.startsWith('image/')) return 'Изображение';
+    if (fileType.startsWith('video/')) return 'Видео';
+    if (fileType === 'application/pdf') return 'PDF документ';
+    
+    const ext = fileName.split('.').pop()?.toLowerCase();
+    const extensionMap = {
+      'jpg': 'Изображение', 'jpeg': 'Изображение', 'png': 'Изображение', 
+      'gif': 'Изображение', 'webp': 'Изображение', 'bmp': 'Изображение',
+      'mp4': 'Видео', 'avi': 'Видео', 'mov': 'Видео', 'wmv': 'Видео',
+      'doc': 'Документ Word', 'docx': 'Документ Word',
+      'xls': 'Таблица Excel', 'xlsx': 'Таблица Excel',
+      'ppt': 'Презентация', 'pptx': 'Презентаation',
+      'zip': 'Архив', 'rar': 'Архив', '7z': 'Архив',
+      'txt': 'Текстовый файл', 'csv': 'CSV файл'
+    };
+    
+    return extensionMap[ext] || 'Файл';
   };
-  
-  return extensionMap[ext] || 'Файл';
-};
 
   const sendMessage = async (e) => {
     e.preventDefault();
@@ -731,51 +735,25 @@ const Messenger = ({ currentUser }) => {
         );
       
       case 'file':
-     case 'image':
-  return (
-    <div className="message-media">
-      <img 
-        src={`${API_BASE_URL}${message.attachment_url}`} 
-        alt={message.original_filename || 'Изображение'}
-        className="message-image"
-        onClick={() => window.open(`${API_BASE_URL}${message.attachment_url}`, '_blank')}
-        onError={(e) => {
-          // Fallback если изображение не загружается
-          e.target.style.display = 'none';
-          const fallback = document.createElement('div');
-          fallback.className = 'file-fallback';
-          fallback.textContent = '🖼️ ' + (message.original_filename || 'Изображение');
-          e.target.parentNode.appendChild(fallback);
-        }}
-      />
-    </div>
-  );
-        
+      case 'image':
         return (
-          <div className="message-file">
-            <div className="file-icon" title={fileTypeText}>
-              {fileIcon}
-            </div>
-            <div className="file-info">
-              <div className="file-name">{fileName}</div>
-              <div className="file-type">{fileTypeText}</div>
-              {message.file_size && (
-                <div className="file-size">
-                  {(message.file_size / 1024 / 1024).toFixed(2)} MB
-                </div>
-              )}
-            </div>
-            <a 
-              href={`${API_BASE_URL}${message.attachment_url}`} 
-              download={fileName}
-              className="file-download-btn"
-              title="Скачать файл"
-            >
-              ⬇️
-            </a>
+          <div className="message-media">
+            <img 
+              src={`${API_BASE_URL}${message.attachment_url}`} 
+              alt={message.original_filename || 'Изображение'}
+              className="message-image"
+              onClick={() => window.open(`${API_BASE_URL}${message.attachment_url}`, '_blank')}
+              onError={(e) => {
+                e.target.style.display = 'none';
+                const fallback = document.createElement('div');
+                fallback.className = 'file-fallback';
+                fallback.textContent = '🖼️ ' + (message.original_filename || 'Изображение');
+                e.target.parentNode.appendChild(fallback);
+              }}
+            />
           </div>
         );
-      
+        
       default:
         return <div className="message-text">{message.content}</div>;
     }
@@ -829,6 +807,7 @@ const Messenger = ({ currentUser }) => {
   // Получаем ID другого участника для аватара в заголовке
   const otherParticipantId = getOtherParticipantId(activeChat);
   const headerAvatar = getUserAvatar(otherParticipantId);
+  const otherParticipantName = getOtherParticipants(activeChat);
 
   return (
     <div className="messenger">
@@ -845,20 +824,23 @@ const Messenger = ({ currentUser }) => {
                 alt="Аватар" 
                 className="chat-avatar-image"
                 onError={(e) => {
-                  // Если аватар не загружается, показываем заглушку
                   e.target.style.display = 'none';
-                  e.target.nextSibling.style.display = 'flex';
+                  const fallback = e.target.nextSibling;
+                  if (fallback) fallback.style.display = 'flex';
                 }}
               />
             ) : null}
-            <div className="chat-avatar-fallback">
-              {getOtherParticipants(activeChat).split(',')[0].charAt(0).toUpperCase()}
+            <div 
+              className="chat-avatar-fallback"
+              style={{ display: headerAvatar ? 'none' : 'flex' }}
+            >
+              {getUserInitials(otherParticipantName)}
             </div>
           </div>
           <div className="chat-user-info">
-            <h3>{getOtherParticipants(activeChat)}</h3>
+            <h3>{otherParticipantName}</h3>
             <span className="online-status">
-              {onlineUsers.has(otherParticipantId) ? 'В сети' : 'Не в сети'}
+              {onlineUsers.has(otherParticipantId?.toString()) ? 'В сети' : 'Не в сети'}
             </span>
           </div>
         </div>
@@ -883,7 +865,6 @@ const Messenger = ({ currentUser }) => {
                 );
               }
               
-              // Получаем аватар для этого сообщения
               const messageAvatar = getUserAvatar(item.user_id, item.user_name);
               
               return (
@@ -900,14 +881,17 @@ const Messenger = ({ currentUser }) => {
                           alt={item.user_name} 
                           className="message-avatar-image"
                           onError={(e) => {
-                            // Если аватар не загружается, показываем заглушку
                             e.target.style.display = 'none';
-                            e.target.nextSibling.style.display = 'flex';
+                            const fallback = e.target.nextSibling;
+                            if (fallback) fallback.style.display = 'flex';
                           }}
                         />
                       ) : null}
-                      <div className="message-avatar-fallback">
-                        {item.user_name?.charAt(0).toUpperCase()}
+                      <div 
+                        className="message-avatar-fallback"
+                        style={{ display: messageAvatar ? 'none' : 'flex' }}
+                      >
+                        {getUserInitials(item.user_name)}
                       </div>
                     </div>
                   )}
@@ -959,6 +943,7 @@ const Messenger = ({ currentUser }) => {
         )}
       </div>
 
+      {/* Остальной код формы отправки сообщений остается без изменений */}
       <form className="message-input-form" onSubmit={sendMessage}>
         {selectedFile && (
           <div className="file-preview">
@@ -1024,7 +1009,6 @@ const Messenger = ({ currentUser }) => {
             </svg>
           </button>
 
-          {/* Кнопка записи голосового сообщения */}
           <button 
             type="button"
             className="voice-record-btn"

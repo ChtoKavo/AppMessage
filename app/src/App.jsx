@@ -9,7 +9,9 @@ import Notifications from './components/Notifications';
 import Friends from './components/Friends';
 import Profile from './components/Profile';
 import AdminPanel from './components/AdminPanel';
+import Search from './components/Search';
 import Fon from '../public/фон.png';
+import Logo from '../public/Лого.png'
 import Friend from '../public/friend.png';
 import Chat from '../public/chat.png';
 import Lenta from '../public/lenta.png';
@@ -143,16 +145,12 @@ function MainApp({ currentUser, activeTab, setActiveTab, sidebarOpen, setSidebar
             </button>
             <div className="header-brand">
               <a href="#" className="logo">
-                <div className="logo-icon"><img src={`http://localhost:5001/image/Лого.png`} alt="" /></div>
-                <img className="logo-large" src={`http://localhost:5001/image/Лого.png`} alt="Логотип" />
+                <div className="logo-icon"><img src={Logo} alt="" /></div>
+                <img className="logo-large" src={Logo} alt="Логотип" />
               </a>
             </div>
             <div className="header-search">
-              <input 
-                type="text" 
-                className="header-search-input" 
-                placeholder="Поиск..." 
-              />
+              <Search currentUser={currentUser} />
               <button className="notification-btn" title="Уведомления">
                 <img className="notification-icon-image" src={Notification} alt="" />
               </button>
@@ -256,21 +254,21 @@ function MainApp({ currentUser, activeTab, setActiveTab, sidebarOpen, setSidebar
           />
           <Route path="/notifications" element={<Notifications currentUser={currentUser} />} />
           <Route 
-  path="/profile" 
-  element={
-    <Profile 
-      currentUser={currentUser} 
-    />
-  } 
-/>
+            path="/profile" 
+            element={
+              <Profile 
+                currentUser={currentUser} 
+              />
+            } 
+          />
           <Route 
-  path="/profile/:userId" 
-  element={
-    <Profile 
-      currentUser={currentUser} 
-    />
-  } 
-/>
+            path="/profile/:userId" 
+            element={
+              <Profile 
+                currentUser={currentUser} 
+              />
+            } 
+          />
           <Route 
             path="/admin" 
             element={

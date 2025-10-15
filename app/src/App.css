@@ -103,16 +103,17 @@ p {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  max-width: 830px; /* align with main blocks */
-  margin: 0 auto;
-  padding: 0 0;
+  padding: 0 40px; /* Уменьшаем боковые отступы */
   height: 70px;
+  margin: 0; /* Убираем автоматические отступы по центру */
+  max-width: none; /* Убираем ограничение максимальной ширины */
 }
 
 .header-left {
   display: flex;
   align-items: center;
   gap: 20px;
+  margin-right: auto; /* Прижимаем к левому краю */
 }
 
 .sidebar-toggle {
@@ -192,11 +193,12 @@ p {
 
 /* Header search */
 .header-search {
-  margin-left: 16px;
   display: flex;
   align-items: center;
   gap: 8px;
+  margin-left: 0; /* Убираем левый отступ */
 }
+
 .notification-btn {
   background: transparent;
   border: 1px solid #e2e8f0;
@@ -226,6 +228,7 @@ p {
   border-radius: 10px;
   outline: none;
   font-size: 14px;
+  width: 1000px;
 }
 
 .header-search-input:focus {

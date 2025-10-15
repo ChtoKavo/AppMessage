@@ -1427,7 +1427,101 @@
     }
   });
 
-  // Поиск пользователей (уже есть, но улучшим)
+  // API для поиска пользователей
+app.get('/api/users/search/:query', async (req, res) => {
+  try {
+    const query = `%${req.params.query}%`;
+    
+    const [users] = await db.execute(
+      `SELECT 
+        user_id, 
+        name, 
+        email, 
+        avatar_url, 
+        is_online, 
+        last_seen,
+        bio
+      FROM users 
+      WHERE (name LIKE ? OR email LIKE ? OR nick LIKE ?) 
+        AND is_active = TRUE
+      LIMIT 20`,
+      [query, query, query]
+    );
+
+    res.json(users);
+  } catch(error) {
+    console.error('Search users error:', error);
+    res.status(500).json({error: 'Database error'});
+  }
+});
+
+// API для поиска постов
+app.get('/api/posts/search', async (req, res) => {
+  try {
+    const { q, user_id } = req.query;
+    const query = `%${q}%`;
+    
+    let sqlQuery = `
+      SELECT 
+        p.*, 
+        u.name as author_name,
+        u.avatar_url as author_avatar,
+        (SELECT COUNT(*) FROM post_likes WHERE post_id = p.post_id) as likes_count,
+        (SELECT COUNT(*) FROM comments WHERE post_id = p.post_id) as comments_count
+      FROM posts p
+      JOIN users u ON p.user_id = u.user_id
+      WHERE (p.content LIKE ? OR p.title LIKE ?)
+        AND p.is_published = TRUE
+    `;
+    
+    let params = [query, query];
+
+    if (user_id && user_id !== 'undefined' && user_id !== 'null') {
+      sqlQuery += ' AND (p.is_public = TRUE OR p.user_id = ?)';
+      params.push(parseInt(user_id));
+    } else {
+      sqlQuery += ' AND p.is_public = TRUE';
+    }
+    
+    sqlQuery += ' ORDER BY p.created_at DESC LIMIT 10';
+
+    const [posts] = await db.execute(sqlQuery, params);
+    res.json(posts);
+  } catch(error) {
+    console.error('Search posts error:', error);
+    res.status(500).json({error: 'Database error'});
+  }
+});
+
+// API для поиска чатов
+app.get('/api/chats/search', async (req, res) => {
+  try {
+    const { q, user_id } = req.query;
+    const query = `%${q}%`;
+    
+    const [chats] = await db.execute(`
+      SELECT DISTINCT c.*,
+        GROUP_CONCAT(u.name) as participant_names,
+        (SELECT content FROM messages WHERE chat_id = c.chat_id ORDER BY created_at DESC LIMIT 1) as last_message,
+        (SELECT created_at FROM messages WHERE chat_id = c.chat_id ORDER BY created_at DESC LIMIT 1) as last_message_time,
+        (SELECT COUNT(*) FROM messages WHERE chat_id = c.chat_id AND is_read = FALSE AND user_id != ?) as unread_count
+      FROM chats c
+      JOIN chat_participants cp ON c.chat_id = cp.chat_id
+      JOIN users u ON cp.user_id = u.user_id
+      WHERE c.chat_id IN (SELECT chat_id FROM chat_participants WHERE user_id = ?)
+        AND (c.chat_name LIKE ? OR u.name LIKE ?)
+      GROUP BY c.chat_id
+      ORDER BY last_message_time DESC
+      LIMIT 10
+    `, [parseInt(user_id), parseInt(user_id), query, query]);
+
+    res.json(chats);
+  } catch(error) {
+    console.error('Search chats error:', error);
+    res.status(500).json({error: 'Database error'});
+  }
+});
+
   app.get('/api/users/search/:query', async (req, res) => {
     try {
       const query = `%${req.params.query}%`;
