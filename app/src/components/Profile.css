@@ -82,6 +82,69 @@
   border-radius: 8px;
 }
 
+/* Стили для заголовка профиля */
+.profile-header-info {
+  background: #f8f9fa;
+  border-radius: 12px;
+  padding: 20px;
+  margin-bottom: 20px;
+  border: 1px solid #e9ecef;
+}
+
+.profile-header-content {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.profile-header-content h2 {
+  margin: 0;
+  color: #333;
+  font-size: 24px;
+}
+
+.profile-view-notice {
+  color: #666;
+  margin: 0;
+  font-style: italic;
+}
+
+.profile-header-actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.back-to-friends-btn {
+  background: #6c757d;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: background-color 0.2s ease;
+}
+
+.back-to-friends-btn:hover {
+  background: #5a6268;
+}
+
+/* Адаптация для мобильных устройств */
+@media (max-width: 768px) {
+  .profile-header-content {
+    flex-direction: column;
+    gap: 15px;
+    align-items: flex-start;
+  }
+  
+  .profile-header-actions {
+    width: 100%;
+    justify-content: space-between;
+  }
+}
+
 .profile-banner::before {
   content: '';
   position: absolute;

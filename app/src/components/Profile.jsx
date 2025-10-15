@@ -1,7 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
 import './Profile.css';
 
-const Profile = ({ currentUser, profileUserId = null }) => {
+const Profile = ({ currentUser }) => {
+  const { userId } = useParams();
+  const navigate = useNavigate();
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -16,13 +19,21 @@ const Profile = ({ currentUser, profileUserId = null }) => {
   // Новые состояния для друзей, подписчиков и галереи
   const [friends, setFriends] = useState([]);
   const [followers, setFollowers] = useState([]);
-  const [gallery, setGallery] = useState([]); // Инициализируем как пустой массив
+  const [gallery, setGallery] = useState([]);
   const [galleryCount, setGalleryCount] = useState(0);
   const [isFollowed, setIsFollowed] = useState(false);
   const [isGalleryModalOpen, setIsGalleryModalOpen] = useState(false);
   const [selectedImage, setSelectedImage] = useState(null);
   const [galleryLoading, setGalleryLoading] = useState(false);
   
+  // Состояние для контекстного меню
+  const [contextMenu, setContextMenu] = useState({
+    visible: false,
+    x: 0,
+    y: 0,
+    image: null
+  });
+
   const fileInputRef = useRef(null);
   const bannerInputRef = useRef(null);
   const galleryInputRef = useRef(null);
@@ -40,15 +51,15 @@ const Profile = ({ currentUser, profileUserId = null }) => {
 
   const API_BASE_URL = 'http://localhost:5001';
 
-  // Определяем, это свой профиль или чужой
-  const isOwnProfile = !profileUserId || profileUserId === currentUser?.user_id;
-  const targetUserId = profileUserId || currentUser?.user_id;
+  // Определяем, это свой профиль или чужой - теперь используем userId из URL
+  const targetUserId = userId || currentUser?.user_id;
+  const isOwnProfile = !userId || targetUserId === currentUser?.user_id;
 
   useEffect(() => {
     if (currentUser) {
       loadUserProfile();
     }
-  }, [currentUser, profileUserId]);
+  }, [currentUser, userId]);
 
   // Загрузка профиля пользователя
   const loadUserProfile = async () => {
@@ -60,6 +71,7 @@ const Profile = ({ currentUser, profileUserId = null }) => {
         throw new Error('Текущий пользователь не определен');
       }
 
+      // Используем targetUserId из URL или текущего пользователя
       const response = await fetch(`${API_BASE_URL}/api/users/${targetUserId}/profile?t=${Date.now()}`);
       
       if (!response.ok) {
@@ -135,30 +147,30 @@ const Profile = ({ currentUser, profileUserId = null }) => {
   };
 
   // Загрузка галереи
- const loadGallery = async () => {
-  try {
-    setGalleryLoading(true);
-    console.log('Loading gallery for user:', targetUserId);
-    
-    const response = await fetch(`${API_BASE_URL}/api/users/${targetUserId}/gallery?limit=3`);
-    
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+  const loadGallery = async () => {
+    try {
+      setGalleryLoading(true);
+      console.log('Loading gallery for user:', targetUserId);
+      
+      const response = await fetch(`${API_BASE_URL}/api/users/${targetUserId}/gallery?limit=3`);
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
+      const galleryData = await response.json();
+      console.log('Gallery data received:', galleryData);
+      
+      setGallery(galleryData.photos || []);
+      setGalleryCount(galleryData.total_count || 0);
+    } catch (error) {
+      console.error('Error loading gallery:', error);
+      setGallery([]);
+      setGalleryCount(0);
+    } finally {
+      setGalleryLoading(false);
     }
-    
-    const galleryData = await response.json();
-    console.log('Gallery data received:', galleryData);
-    
-    setGallery(galleryData.photos || []);
-    setGalleryCount(galleryData.total_count || 0);
-  } catch (error) {
-    console.error('Error loading gallery:', error);
-    setGallery([]);
-    setGalleryCount(0);
-  } finally {
-    setGalleryLoading(false);
-  }
-};
+  };
 
   // Проверка статуса подписки
   const checkFollowStatus = async () => {
@@ -248,7 +260,6 @@ const Profile = ({ currentUser, profileUserId = null }) => {
       if (response.ok) {
         const result = await response.json();
         setPostForm({ content: '', image: null });
-        // Можно добавить уведомление об успешном создании поста
         alert('Пост успешно создан!');
       } else {
         throw new Error('Ошибка создания поста');
@@ -273,6 +284,70 @@ const Profile = ({ currentUser, profileUserId = null }) => {
     setSelectedImage(image);
   };
 
+  // Функции для контекстного меню
+  const handleImageRightClick = (e, image) => {
+    e.preventDefault();
+    
+    if (!isOwnProfile) return; // Только для своего профиля
+    
+    setContextMenu({
+      visible: true,
+      x: e.clientX,
+      y: e.clientY,
+      image: image
+    });
+  };
+
+  const closeContextMenu = () => {
+    setContextMenu({
+      visible: false,
+      x: 0,
+      y: 0,
+      image: null
+    });
+  };
+
+  const handleDeleteImage = async () => {
+    if (!contextMenu.image) return;
+    
+    if (!window.confirm('Вы уверены, что хотите удалить это изображение?')) {
+      closeContextMenu();
+      return;
+    }
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/gallery/${contextMenu.image.gallery_id}`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ userId: currentUser.user_id })
+      });
+      
+      if (response.ok) {
+        // Обновляем галерею после удаления
+        loadGallery();
+        closeContextMenu();
+        
+        // Закрываем модальное окно если оно открыто
+        if (selectedImage && selectedImage.gallery_id === contextMenu.image.gallery_id) {
+          setSelectedImage(null);
+        }
+        
+        // Закрываем модальное окно галереи если там не осталось фото
+        if (gallery.length <= 1) {
+          closeGalleryModal();
+        }
+      } else {
+        const errorData = await response.json();
+        setError(errorData.error || 'Ошибка удаления изображения');
+      }
+    } catch (error) {
+      console.error('Error deleting image:', error);
+      setError('Ошибка удаления изображения');
+    }
+  };
+
   // Вызов функций загрузки данных
   useEffect(() => {
     if (user) {
@@ -281,6 +356,20 @@ const Profile = ({ currentUser, profileUserId = null }) => {
       checkFollowStatus();
     }
   }, [user, isOwnProfile]);
+
+  // Обработчик закрытия контекстного меню при клике вне его
+  useEffect(() => {
+    const handleClickOutside = () => {
+      if (contextMenu.visible) {
+        closeContextMenu();
+      }
+    };
+
+    document.addEventListener('click', handleClickOutside);
+    return () => {
+      document.removeEventListener('click', handleClickOutside);
+    };
+  }, [contextMenu.visible]);
 
   // Обработчики изменений в форме
   const handleGalleryImageChange = (e) => {
@@ -601,6 +690,11 @@ const Profile = ({ currentUser, profileUserId = null }) => {
     }
   };
 
+  // Кнопка "Назад к друзьям" для чужих профилей
+  const handleBackToFriends = () => {
+    navigate('/friends');
+  };
+
   // Если пользователь не загружен, показываем заглушку
   if (!currentUser) {
     return (
@@ -824,6 +918,7 @@ const Profile = ({ currentUser, profileUserId = null }) => {
 
   return (
     <div className="profile-container">
+
       <div className="profile-banner">
         <div 
           className="banner-overlay"
@@ -1032,39 +1127,40 @@ const Profile = ({ currentUser, profileUserId = null }) => {
           ) : (
             <>
               <div className="gallery-grid">
-  {Array.isArray(gallery) && gallery.map((photo, index) => (
-    <div 
-      key={photo.gallery_id || index} 
-      className="gallery-item"
-      onClick={() => openImageModal(photo)}
-    >
-      <img 
-        src={`${API_BASE_URL}${photo.image_url}`} 
-        alt={`Фото ${index + 1}`}
-        loading="lazy"
-        onError={(e) => {
-          console.error('Error loading image:', photo.image_url);
-          e.target.style.display = 'none';
-          if (e.target.nextSibling) {
-            e.target.nextSibling.style.display = 'block';
-          }
-        }}
-      />
-      <div className="gallery-placeholder" style={{display: 'none'}}>
-        <span>Ошибка загрузки</span>
-      </div>
-    </div>
-  ))}
-  
-  {/* Заполнители если фото меньше 3 */}
-  {Array.isArray(gallery) && gallery.length === 0 && !galleryLoading && (
-    <div className="gallery-item placeholder">
-      <div className="gallery-placeholder">
-        <span>Нет фото</span>
-      </div>
-    </div>
-  )}
-</div>
+                {Array.isArray(gallery) && gallery.map((photo, index) => (
+                  <div 
+                    key={photo.gallery_id || index} 
+                    className="gallery-item"
+                    onClick={() => openImageModal(photo)}
+                    onContextMenu={(e) => handleImageRightClick(e, photo)}
+                  >
+                    <img 
+                      src={`${API_BASE_URL}${photo.image_url}`} 
+                      alt={`Фото ${index + 1}`}
+                      loading="lazy"
+                      onError={(e) => {
+                        console.error('Error loading image:', photo.image_url);
+                        e.target.style.display = 'none';
+                        if (e.target.nextSibling) {
+                          e.target.nextSibling.style.display = 'block';
+                        }
+                      }}
+                    />
+                    <div className="gallery-placeholder" style={{display: 'none'}}>
+                      <span>Ошибка загрузки</span>
+                    </div>
+                  </div>
+                ))}
+                
+                {/* Заполнители если фото меньше 3 */}
+                {Array.isArray(gallery) && gallery.length === 0 && !galleryLoading && (
+                  <div className="gallery-item placeholder">
+                    <div className="gallery-placeholder">
+                      <span>Нет фото</span>
+                    </div>
+                  </div>
+                )}
+              </div>
               
               {/* Кнопки галереи */}
               <div className="gallery-buttons">
@@ -1286,12 +1382,20 @@ const Profile = ({ currentUser, profileUserId = null }) => {
                       key={photo.gallery_id} 
                       className="gallery-modal-item"
                       onClick={() => openImageModal(photo)}
+                      onContextMenu={(e) => handleImageRightClick(e, photo)}
                     >
                       <img 
                         src={`${API_BASE_URL}${photo.image_url}`} 
                         alt="Фото из галереи"
                         loading="lazy"
                       />
+                      
+                      {/* Индикатор возможности удаления для своих фото */}
+                      {isOwnProfile && (
+                        <div className="gallery-item-overlay">
+                          <span className="right-click-hint">ПКМ для удаления</span>
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -1313,13 +1417,53 @@ const Profile = ({ currentUser, profileUserId = null }) => {
               <button className="modal-close" onClick={closeGalleryModal}>
                 ×
               </button>
+              {isOwnProfile && (
+                <button 
+                  className="delete-image-button"
+                  onClick={() => {
+                    setContextMenu({
+                      visible: true,
+                      x: 100,
+                      y: 100,
+                      image: selectedImage
+                    });
+                  }}
+                  title="Удалить изображение"
+                >
+                  🗑️ Удалить
+                </button>
+              )}
             </div>
             <div className="image-modal-body">
               <img 
                 src={`${API_BASE_URL}${selectedImage.image_url}`} 
                 alt="Просмотр фото"
+                onContextMenu={(e) => handleImageRightClick(e, selectedImage)}
               />
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Контекстное меню для удаления изображений */}
+      {contextMenu.visible && (
+        <div 
+          className="context-menu"
+          style={{
+            position: 'fixed',
+            left: contextMenu.x,
+            top: contextMenu.y,
+            zIndex: 1000
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="context-menu-item" onClick={handleDeleteImage}>
+            <span className="context-menu-icon">🗑️</span>
+            Удалить изображение
+          </div>
+          <div className="context-menu-item" onClick={closeContextMenu}>
+            <span className="context-menu-icon">✕</span>
+            Отмена
           </div>
         </div>
       )}

@@ -23,6 +23,7 @@ function MainApp({ currentUser, activeTab, setActiveTab, sidebarOpen, setSidebar
   const navigate = useNavigate();
   const location = useLocation();
   const [userAvatar, setUserAvatar] = useState(null);
+  const [profileUserId, setProfileUserId] = useState(null); // Новое состояние для просмотра профилей других пользователей
 
   // Загружаем аватар пользователя
   useEffect(() => {
@@ -38,9 +39,25 @@ function MainApp({ currentUser, activeTab, setActiveTab, sidebarOpen, setSidebar
     else if (path === '/chats' || path.startsWith('/chat/')) setActiveTab('messenger');
     else if (path === '/friends') setActiveTab('friends');
     else if (path === '/notifications') setActiveTab('notifications');
-    else if (path === '/profile') setActiveTab('profile');
+    else if (path === '/profile' || path.startsWith('/profile/')) setActiveTab('profile');
     else if (path === '/admin') setActiveTab('admin');
   }, [location.pathname, setActiveTab]);
+
+  // Обработчик для просмотра профилей других пользователей
+  const handleViewProfile = (userId) => {
+    setProfileUserId(userId);
+    navigate(`/profile/${userId}`);
+    setActiveTab('profile');
+    setSidebarOpen(false);
+  };
+
+  // Обработчик для возврата к своему профилю
+  const handleViewMyProfile = () => {
+    setProfileUserId(null);
+    navigate('/profile');
+    setActiveTab('profile');
+    setSidebarOpen(false);
+  };
 
   const loadUserAvatar = async () => {
     try {
@@ -61,6 +78,7 @@ function MainApp({ currentUser, activeTab, setActiveTab, sidebarOpen, setSidebar
   const handleTabChange = (tab) => {
     setActiveTab(tab);
     setSidebarOpen(false);
+    setProfileUserId(null); // Сбрасываем просмотр чужого профиля при смене вкладки
     
     // Навигация по маршрутам
     switch (tab) {
@@ -144,10 +162,10 @@ function MainApp({ currentUser, activeTab, setActiveTab, sidebarOpen, setSidebar
           <div className="header-actions">
             <div className="user-menu">
               <div className="user-item">
-                <div className="user-avatar">
+                <div className="user-avatar" onClick={handleViewMyProfile} style={{ cursor: 'pointer' }}>
                   {renderAvatar()}
                 </div>
-                <div className="user-info">
+                <div className="user-info" onClick={handleViewMyProfile} style={{ cursor: 'pointer' }}>
                   <div className="user-name">{currentUser.name}</div>
                   <div className="user-role">{currentUser.role}</div>
                 </div>
@@ -212,7 +230,7 @@ function MainApp({ currentUser, activeTab, setActiveTab, sidebarOpen, setSidebar
           </button>
           <button 
             className={`sidebar-item ${activeTab === 'profile' ? 'active' : ''}`}
-            onClick={() => handleTabChange('profile')}
+            onClick={handleViewMyProfile}
           >
             <span className="sidebar-icon"><img src={Prof} alt="" /></span>
             <span className="sidebar-label">Профиль</span>
@@ -227,9 +245,32 @@ function MainApp({ currentUser, activeTab, setActiveTab, sidebarOpen, setSidebar
           <Route path="/feed" element={<Feed currentUser={currentUser} />} />
           <Route path="/chats" element={<ChatSelector currentUser={currentUser} />} />
           <Route path="/chat/:chatId" element={<Messenger currentUser={currentUser} />} />
-          <Route path="/friends" element={<Friends currentUser={currentUser} />} />
+          <Route 
+            path="/friends" 
+            element={
+              <Friends 
+                currentUserId={currentUser.user_id} 
+                onViewProfile={handleViewProfile} 
+              />
+            } 
+          />
           <Route path="/notifications" element={<Notifications currentUser={currentUser} />} />
-          <Route path="/profile" element={<Profile currentUser={currentUser} />} />
+          <Route 
+  path="/profile" 
+  element={
+    <Profile 
+      currentUser={currentUser} 
+    />
+  } 
+/>
+          <Route 
+  path="/profile/:userId" 
+  element={
+    <Profile 
+      currentUser={currentUser} 
+    />
+  } 
+/>
           <Route 
             path="/admin" 
             element={

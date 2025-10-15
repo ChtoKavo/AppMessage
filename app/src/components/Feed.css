@@ -1,4 +1,4 @@
-/* Feed.css - обновленный дизайн */
+/* Feed.css */
 .feed {
   padding: 0;
   background: transparent;
@@ -9,6 +9,61 @@
   justify-content: center;
   align-items: center;
   margin-bottom: 16px;
+}
+
+.post-image {
+  max-width: 100%;
+  max-height: 500px;
+  border-radius: 8px;
+  margin-top: 12px;
+  object-fit: contain;
+  background-color: #f5f5f5;
+}
+
+.image-preview {
+  position: relative;
+  margin: 10px 0;
+  display: inline-block;
+}
+
+.preview-image {
+  max-width: 200px;
+  max-height: 200px;
+  border-radius: 8px;
+  object-fit: cover;
+}
+
+.remove-image-btn {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  background: #ff4444;
+  color: white;
+  border: none;
+  border-radius: 50%;
+  width: 24px;
+  height: 24px;
+  cursor: pointer;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.file-upload-btn {
+  background: #f0f0f0;
+  border: 1px solid #ddd;
+  padding: 8px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  transition: background-color 0.2s;
+}
+
+.file-upload-btn:hover {
+  background: #e0e0e0;
 }
 
 .feed-header h2 {
@@ -44,7 +99,7 @@
   transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease, transform 0.05s ease;
   box-shadow: none;
   width: 100%;
-  max-width: 710px; /* match card width */
+  max-width: 710px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -262,13 +317,13 @@
   display: flex;
   flex-direction: column;
   gap: 20px;
-  align-items: center; /* center the fixed-width cards */
-  max-height: calc(100vh - 180px); /* allow page to scroll posts */
+  align-items: center;
+  max-height: calc(100vh - 180px);
   overflow-y: auto;
   padding-right: 0;
-  scrollbar-width: thin; /* Firefox */
-  scrollbar-color: #FFA705 transparent; /* Firefox: orange thumb, transparent track */
-  max-width: 710px; /* bring scrollbar close to posts */
+  scrollbar-width: thin;
+  scrollbar-color: #FFA705 transparent;
+  max-width: 710px;
   width: 100%;
   margin: 0 auto;
 }
@@ -279,13 +334,13 @@
 }
 
 .posts-list::-webkit-scrollbar-track {
-  background: transparent; /* transparent track */
+  background: transparent;
 }
 
 .posts-list::-webkit-scrollbar-thumb {
   background: #FFA705;
   border-radius: 8px;
-  border: none; /* remove surrounding border so only orange bar shows */
+  border: none;
 }
 
 .posts-list::-webkit-scrollbar-thumb:hover {
@@ -307,6 +362,11 @@
   border-radius: 50%;
   animation: spin 1s linear infinite;
   margin: 0 auto 16px;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
 }
 
 .empty-state {
@@ -360,7 +420,7 @@
   border: 1px solid #eef1f4;
   transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
   width: 100%;
-  max-width: 710px; /* requested fixed width */
+  max-width: 710px;
 }
 
 .post-item:hover {
@@ -414,10 +474,8 @@
 
 .post-content {
   margin-bottom: 16px;
-  /* align content start with author name (avatar 48px + 12px gap) */
-  margin-left: 60px;
-  width: calc(100% - 60px);
-  max-width: 620px; /* constrain readable width for post text */
+  width: 100%;
+  max-width: none;
 }
 
 .post-content p {
@@ -427,38 +485,6 @@
   font-size: 16px;
   text-indent: 0;
   padding-left: 0;
-}
-
-.post-image {
-  width: 100%;
-  max-height: 400px;
-  object-fit: cover;
-  border-radius: 12px;
-  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.12);
-  transition: transform 0.25s ease, box-shadow 0.25s ease;
-}
-
-.post-image:hover {
-  transform: scale(1.01);
-  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.14);
-}
-
-.post-stats {
-  display: flex;
-  gap: 16px;
-  margin-bottom: 12px;
-  padding-bottom: 12px;
-  border-bottom: 1px solid #e8ecef;
-}
-
-.stat {
-  color: #495057;
-  font-size: 12px;
-  font-weight: 600;
-  background: #f5f7fb;
-  border: 1px solid #e8ecef;
-  padding: 4px 10px;
-  border-radius: 999px;
 }
 
 .post-actions {
@@ -484,7 +510,6 @@
   min-width: 50px;
 }
 
-/* counters inside buttons */
 .like-btn span, .comment-btn span {
   display: inline-block;
   min-width: 16px;
@@ -637,7 +662,7 @@
 }
 
 .comment-text {
-  padding-right: 56px; /* leave room for time on right */
+  padding-right: 56px;
 }
 
 .no-comments {
@@ -679,4 +704,183 @@
 
 .error-message button:hover {
   background: rgba(231, 76, 60, 0.2);
+}
+
+/* Галерея изображений в посте */
+.post-images-gallery {
+  display: grid;
+  gap: 4px;
+  margin-top: 12px;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+/* 1 изображение */
+.post-images-gallery.grid-1 {
+  grid-template-columns: 1fr;
+}
+
+.post-images-gallery.grid-1 .gallery-image-item {
+  aspect-ratio: 16/9;
+}
+
+/* 2 изображения */
+.post-images-gallery.grid-2 {
+  grid-template-columns: 1fr 1fr;
+}
+
+.post-images-gallery.grid-2 .gallery-image-item {
+  aspect-ratio: 1;
+}
+
+/* 3 изображения */
+.post-images-gallery.grid-3 {
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+}
+
+.post-images-gallery.grid-3 .gallery-image-item:nth-child(1) {
+  grid-column: 1 / 3;
+  grid-row: 1;
+  aspect-ratio: 16/9;
+}
+
+.post-images-gallery.grid-3 .gallery-image-item:nth-child(2),
+.post-images-gallery.grid-3 .gallery-image-item:nth-child(3) {
+  aspect-ratio: 1;
+}
+
+/* 4 и более изображений */
+.post-images-gallery.grid-4 {
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+}
+
+.post-images-gallery.grid-4 .gallery-image-item {
+  aspect-ratio: 1;
+  position: relative;
+}
+
+.gallery-image-item {
+  position: relative;
+  overflow: hidden;
+  background: #f5f5f5;
+}
+
+.gallery-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  transition: transform 0.3s ease;
+}
+
+.gallery-image:hover {
+  transform: scale(1.05);
+}
+
+.image-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.7);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  font-weight: 600;
+}
+
+/* Адаптивность для мобильных устройств */
+@media (max-width: 768px) {
+  .post-images-gallery.grid-2,
+  .post-images-gallery.grid-4 {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto;
+  }
+  
+  .post-images-gallery.grid-3 {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto;
+  }
+  
+  .post-images-gallery.grid-3 .gallery-image-item:nth-child(1) {
+    grid-column: 1;
+    grid-row: 1;
+  }
+  
+  .post-item {
+    padding: 16px;
+  }
+  
+  .post-content {
+    margin-left: 0;
+  }
+  
+  .posts-list {
+    max-width: 100%;
+    padding: 0 8px;
+  }
+}
+
+/* Preview images in create post modal */
+.images-preview {
+  margin: 0 24px 16px;
+}
+
+.images-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.image-preview-item {
+  position: relative;
+  aspect-ratio: 1;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.image-preview-item .preview-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.image-preview-item .remove-image-btn {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  background: rgba(0, 0, 0, 0.7);
+  color: white;
+  border: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+}
+
+.image-number {
+  position: absolute;
+  bottom: 4px;
+  left: 4px;
+  background: rgba(0, 0, 0, 0.7);
+  color: white;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 10px;
+}
+
+.images-count {
+  text-align: center;
+  color: #6c757d;
+  font-size: 12px;
 }
