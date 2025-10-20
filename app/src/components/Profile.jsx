@@ -1088,7 +1088,7 @@ const Profile = ({ currentUser }) => {
             <div className="profile-details">
               <div className="bio-section">
                 <h4>О себе</h4>
-                <p>{user.bio || 'Пользователь еще не добавил информацию о себе.'}</p>
+                <p className='me'>{user.bio || 'Пользователь еще не добавил информацию о себе.'}</p>
               </div>
               
               <div className="stats-section">

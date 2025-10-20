@@ -55,68 +55,67 @@ const Login = ({ onLogin, onSwitchToRegister }) => {
   return (
     <div className="login-container">
       <div className="login-background">
-        <div className="sphere-12"></div>
+        <div className="sphere-12">
+          <div className="sphere-content">
+            <div className="login-title">Вход</div>
+            <div className="login-form">
+              <form onSubmit={handleSubmit} className="form-login">
+                <div className="form-group">
+                  <input
+                    className='inputlol'
+                    type="email"
+                    id="email"
+                    name="email"
+                    value={formData.email}
+                    onChange={handleChange}
+                    required
+                    placeholder="Введите ваш email*"
+                    disabled={loading}
+                  />
+                </div>
+
+                <div className="form-group">
+                  <input
+                    className='inputlol'
+                    type="password"
+                    id="password"
+                    name="password"
+                    value={formData.password}
+                    onChange={handleChange}
+                    required
+                    placeholder="Введите ваш пароль*"
+                    disabled={loading}
+                  />
+                </div>
+
+                {error && <div className="error-message">{error}</div>}
+
+                <button 
+                  type="submit" 
+                  className="login-button"
+                  disabled={loading}
+                >
+                  {loading ? 'Вход...' : 'Войти'}
+                </button>
+              </form>
+
+              <div className="switch-auth">
+                <p className='no'>Нет аккаунта? 
+                  <span 
+                    className="switch-link" 
+                    onClick={onSwitchToRegister}
+                  >
+                    Зарегистрироваться
+                  </span>
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
         <div className="sphere-22"></div>
         <div className="sphere-32"></div>
-      </div>
-      
-      <div className="header-sphere1">
-        <div className="header-content">
-          <h1 className="login-title">Вход</h1>
-        </div>
-      </div>
-      
-      <div className="login-form">
-        <form onSubmit={handleSubmit} className="form-login">
-          <div className="form-group">
-            <input
-              className='inputlol'
-              type="email"
-              id="email"
-              name="email"
-              value={formData.email}
-              onChange={handleChange}
-              required
-              placeholder="Введите ваш email*"
-              disabled={loading}
-            />
-          </div>
-
-          <div className="form-group">
-            <input
-              className='inputlol'
-              type="password"
-              id="password"
-              name="password"
-              value={formData.password}
-              onChange={handleChange}
-              required
-              placeholder="Введите ваш пароль*"
-              disabled={loading}
-            />
-          </div>
-
-          {error && <div className="error-message">{error}</div>}
-
-          <button 
-            type="submit" 
-            className="login-button"
-            disabled={loading}
-          >
-            {loading ? 'Вход...' : 'Войти'}
-          </button>
-        </form>
-
-        <div className="switch-auth">
-          <p>Нет аккаунта? 
-            <span 
-              className="switch-link" 
-              onClick={onSwitchToRegister}
-            >
-              Зарегистрироваться
-            </span>
-          </p>
-        </div>
+        <div className="orange-sphere-1"></div>
+        <div className="orange-sphere-2"></div>
       </div>
     </div>
   );

@@ -42,6 +42,10 @@
   justify-content: center;
 }
 
+.me{
+  color:#000000;
+}
+
 .gallery-placeholder {
   width: 100%;
   height: 100%;
