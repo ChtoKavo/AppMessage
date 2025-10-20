@@ -573,17 +573,26 @@ const Register = ({ onRegister, onSwitchToLogin }) => {
         </div>
         
         <div className="categories-grid">
-          {availableCategories.map(category => (
-            <div
-              key={category.id}
-              className={`category-card ${formData.categories.includes(category.id) ? 'selected' : ''}`}
-              onClick={() => handleCategoryToggle(category.id)}
-            >
-              <div className="category-icon">{category.icon}</div>
-              <div className="category-name">{category.name}</div>
-            </div>
-          ))}
-        </div>
+  {availableCategories.map(category => (
+    <div
+      key={category.id}
+      className={`category-card ${formData.categories.includes(category.id) ? 'selected' : ''}`}
+      onClick={() => handleCategoryToggle(category.id)}
+    >
+      <button
+        className={`category-button ${formData.categories.includes(category.id) ? 'selected' : ''}`}
+        onClick={(e) => {
+          e.stopPropagation();
+          handleCategoryToggle(category.id);
+        }}
+      >
+        <div className="category-icon">{category.icon}</div>
+        <div className="category-name">{category.name}</div>
+      </button>
+    </div>
+  ))}
+</div>
+
 
         {error && <div className="error-message">{error}</div>}
 
